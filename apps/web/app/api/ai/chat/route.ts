@@ -60,11 +60,10 @@ export async function POST(req: NextRequest) {
     return Response.json({ text, mood });
   } catch (error: any) {
     console.error('AI Chat error:', error?.message || error);
-    // Return mock on error so chat always works
-    const { message = '', locale = 'hr' } = await req.json().catch(() => ({ message: '', locale: 'hr' }));
     return Response.json({
-      text: locale === 'hr' ? getMockResponseHR(message || 'bok') : getMockResponseEN(message || 'hi'),
+      text: `[AI Error: ${error?.message || 'Unknown'}] Mock response: Tu sam za tebe! 💪`,
       mood: 'calm',
+      debug: { error: error?.message, hasKey: !!GEMINI_API_KEY, keyPrefix: GEMINI_API_KEY?.substring(0, 10) },
     });
   }
 }
