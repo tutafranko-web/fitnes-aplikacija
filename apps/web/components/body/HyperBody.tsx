@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useT } from '@/hooks/useLocale';
 import { useLocaleStore } from '@/hooks/useLocale';
-import { frontMuscles, backMuscles, getMuscleGroup, type MuscleZone } from '@shared/constants/muscleMap';
-import { getInflammationStyle } from '@shared/constants/soreness';
+import { frontMuscles, backMuscles, getMuscleGroup, type MuscleZone } from '@/lib/constants/muscleMap';
+import { getInflammationStyle } from '@/lib/constants/soreness';
 
 interface Props {
   soreness: Record<string, number>;

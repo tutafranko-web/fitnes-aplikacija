@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getTranslations, type Locale, type TranslationKey } from '@shared/i18n';
+import { getTranslations, type Locale, type TranslationKey } from '@/lib/i18n';
 
 interface LocaleStore {
   locale: Locale;

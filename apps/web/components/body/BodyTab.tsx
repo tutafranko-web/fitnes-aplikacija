@@ -3,8 +3,8 @@
 import { useState, useRef } from 'react';
 import { useT } from '@/hooks/useLocale';
 import { useLocaleStore } from '@/hooks/useLocale';
-import { defaultSoreness, sorenessLevels } from '@shared/constants/soreness';
-import { stretchMap } from '@shared/constants/muscleMap';
+import { defaultSoreness, sorenessLevels } from '@/lib/constants/soreness';
+import { stretchMap } from '@/lib/constants/muscleMap';
 import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
