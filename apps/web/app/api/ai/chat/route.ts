@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.0-flash-lite',
       systemInstruction: (trainerPrompt || defaultPrompt[lang]) +
         (userContext ? `\n\nUser profile:\n${JSON.stringify(userContext, null, 2)}` : ''),
     });
