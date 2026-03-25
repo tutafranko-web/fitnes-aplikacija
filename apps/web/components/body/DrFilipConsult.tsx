@@ -5,6 +5,7 @@ import { useLocaleStore } from '@/hooks/useLocale';
 import Box from '@/components/ui/Box';
 import Lbl from '@/components/ui/Lbl';
 import DrFilip from './DrFilip';
+import { findDiagnosis, buildKnowledgePrompt, type PhysioDiagnosis } from '@/lib/constants/physioKnowledge';
 
 type Mood = 'idle' | 'thinking' | 'talking' | 'happy' | 'concerned';
 
@@ -51,6 +52,20 @@ export default function DrFilipConsult({ soreness }: { soreness: Record<string, 
     setTyping(true);
     setMood('thinking');
 
+    // Check local knowledge base first for instant response
+    const localDiag = findDiagnosis(text);
+    if (localDiag && !chatMsgs.some((m) => m.text.includes(localDiag.name[hr ? 'hr' : 'en']))) {
+      setTyping(false);
+      setMood('talking');
+      setIsTalking(true);
+      const lang = hr ? 'hr' : 'en';
+      const offlineResponse = buildOfflineResponse(localDiag, lang);
+      setChatMsgs((p) => [...p, { role: 'ai', text: offlineResponse }]);
+      setMessage(hr ? `Imam podatke o ${localDiag.name.hr}!` : `I have data on ${localDiag.name.en}!`);
+      setTimeout(() => { setIsTalking(false); setMood('happy'); }, 3000);
+      return;
+    }
+
     // Build context from user profile + soreness
     const painfulMuscles = Object.entries(soreness).filter(([, v]) => v >= 2);
     const injuries = profile?.injuries || [];
@@ -86,7 +101,8 @@ Korisnikovi podaci:
 - Trenutna bol: ${painfulMuscles.map(([id, v]) => `${id} (razina ${v}/4)`).join(', ') || 'nema boli'}
 - Težina: ${profile?.weight || '?'}kg, Visina: ${profile?.height || '?'}cm, Dob: ${profile?.age || '?'}
 
-PRAVILA: Daj KONKRETNE preporuke. UVIJEK napomeni da posjeti pravog liječnika za potvrdu. Na hrvatskom jeziku.`
+PRAVILA: Daj KONKRETNE preporuke. UVIJEK napomeni da posjeti pravog liječnika za potvrdu. Na hrvatskom jeziku.
+${buildKnowledgePrompt('hr')}`
       : `You are Dr. Filip Matković — doctor of physiotherapy and sports medicine.
 BIO: Graduated physiotherapy at Zagreb Medical Faculty. Specialized in sports medicine at Universitat de Barcelona. Worked 3 years with professional athletes in Catalonia — FC Barcelona B team, athletes, swimmers. Runs clinics in Zagreb and Split.
 STATS: 14 years experience, 3,200+ patients, 98% success rate.
@@ -108,7 +124,8 @@ User data:
 - Current pain: ${painfulMuscles.map(([id, v]) => `${id} (level ${v}/4)`).join(', ') || 'no pain'}
 - Weight: ${profile?.weight || '?'}kg, Height: ${profile?.height || '?'}cm, Age: ${profile?.age || '?'}
 
-RULES: Give SPECIFIC recommendations. ALWAYS remind to visit a real doctor. In English.`;
+RULES: Give SPECIFIC recommendations. ALWAYS remind to visit a real doctor. In English.
+${buildKnowledgePrompt('en')}`;
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -246,4 +263,41 @@ RULES: Give SPECIFIC recommendations. ALWAYS remind to visit a real doctor. In E
       )}
     </Box>
   );
+}
+
+function buildOfflineResponse(diag: PhysioDiagnosis, lang: 'hr' | 'en'): string {
+  const l = lang;
+  const isHr = l === 'hr';
+  let r = '';
+
+  r += `🩺 **${diag.name[l]}**\n`;
+  r += isHr ? `ICD-10: ${diag.icd10 || 'N/A'}\n\n` : `ICD-10: ${diag.icd10 || 'N/A'}\n\n`;
+
+  r += isHr ? '📋 **Opis:**\n' : '📋 **Description:**\n';
+  r += diag.description[l] + '\n\n';
+
+  r += isHr ? '🔍 **Simptomi:**\n' : '🔍 **Symptoms:**\n';
+  r += diag.symptoms[l].map((s) => `• ${s}`).join('\n') + '\n\n';
+
+  r += isHr ? '⚡ **Akutna faza** (' + diag.phase1_acute.duration + '):\n' : '⚡ **Acute phase** (' + diag.phase1_acute.duration + '):\n';
+  r += diag.phase1_acute[l].map((s) => `• ${s}`).join('\n') + '\n\n';
+
+  r += isHr ? '🏋️ **Vježbe za prvu fazu:**\n' : '🏋️ **Phase 1 exercises:**\n';
+  const p1ex = diag.exercises.filter((e) => e.phase === 1);
+  r += p1ex.map((e) => `• ${isHr ? e.nameHr : e.name} — ${e.sets}×${e.reps}${e.hold ? ` (${isHr ? 'drži' : 'hold'} ${e.hold})` : ''} — ${e.frequency}\n  ${e.description[l]}`).join('\n') + '\n\n';
+
+  r += isHr ? '🚫 **Kontraindikacije:**\n' : '🚫 **Contraindications:**\n';
+  r += diag.contraindications[l].map((s) => `• ${s}`).join('\n') + '\n\n';
+
+  r += isHr ? '🚨 **Crvene zastave — posjet liječniku:**\n' : '🚨 **Red flags — see a doctor:**\n';
+  r += diag.redFlags[l].map((s) => `• ${s}`).join('\n') + '\n\n';
+
+  r += isHr ? `⏱️ **Oporavak:** ${diag.recoveryTimeline}\n` : `⏱️ **Recovery:** ${diag.recoveryTimeline}\n`;
+  r += isHr ? `✅ **Uspješnost:** ${diag.successRate}\n\n` : `✅ **Success rate:** ${diag.successRate}\n\n`;
+
+  r += isHr
+    ? '💡 Od 1 do 10, koliko boli? Reci mi više o simptomima pa ću prilagoditi program. ⚠️ Ovo je AI procjena — za potvrdu posjetite pravog fizioterapeuta.'
+    : '💡 On a scale of 1-10, how much does it hurt? Tell me more about symptoms and I\'ll customize the program. ⚠️ This is an AI assessment — visit a real physiotherapist for confirmation.';
+
+  return r;
 }
