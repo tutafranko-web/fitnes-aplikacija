@@ -173,22 +173,41 @@ export default function TrainerTab() {
       {/* Chat Messages */}
       <Box ref={chatRef} className="flex flex-col gap-2 overflow-auto" style={{ maxHeight: mode === 'voice' ? 180 : 340 }}>
         {msgs.map((m, i) => (
-          <div key={i} className="max-w-[88%] py-2.5 px-3.5 rounded-[18px] text-xs leading-relaxed whitespace-pre-wrap"
-            style={{
-              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-              background: m.role === 'user' ? 'linear-gradient(135deg,#00f0b5,#3ea8ff)' : 'rgba(255,255,255,0.05)',
-              color: m.role === 'user' ? '#000' : '#e8eaf0',
-              fontWeight: m.role === 'user' ? 700 : 400,
-              borderBottomRightRadius: m.role === 'user' ? 4 : 18,
-              borderBottomLeftRadius: m.role === 'ai' ? 4 : 18,
-            }}
-          >{m.text}</div>
+          <div key={i} className="flex gap-2" style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%', flexDirection: m.role === 'user' ? 'row-reverse' : 'row' }}>
+            {/* Avatar */}
+            {m.role === 'ai' && trainer && (
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0 mt-1"
+                style={{ background: `${trainer.color}20`, border: `1.5px solid ${trainer.color}44` }}>
+                {trainer.emoji}
+              </div>
+            )}
+            {m.role === 'user' && (
+              <div className="w-7 h-7 rounded-full bg-fit-accent/20 flex items-center justify-center text-sm shrink-0 mt-1">👤</div>
+            )}
+            <div className="py-2.5 px-3.5 rounded-[18px] text-xs leading-relaxed whitespace-pre-wrap"
+              style={{
+                background: m.role === 'user' ? 'linear-gradient(135deg,#00f0b5,#3ea8ff)' : 'rgba(255,255,255,0.05)',
+                color: m.role === 'user' ? '#000' : '#e8eaf0',
+                fontWeight: m.role === 'user' ? 700 : 400,
+                borderBottomRightRadius: m.role === 'user' ? 4 : 18,
+                borderBottomLeftRadius: m.role === 'ai' ? 4 : 18,
+              }}
+            >{m.text}</div>
+          </div>
         ))}
         {typing && (
-          <div className="self-start py-2.5 px-[18px] rounded-[18px] bg-white/[0.05] flex gap-1">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="w-1.5 h-1.5 rounded-full bg-fit-accent" style={{ animation: `pulse3 1s ${i * 0.2}s infinite` }} />
-            ))}
+          <div className="flex gap-2 self-start">
+            {trainer && (
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-sm shrink-0"
+                style={{ background: `${trainer.color}20`, border: `1.5px solid ${trainer.color}44` }}>
+                {trainer.emoji}
+              </div>
+            )}
+            <div className="py-2.5 px-[18px] rounded-[18px] bg-white/[0.05] flex gap-1">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-fit-accent" style={{ animation: `pulse3 1s ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
           </div>
         )}
       </Box>

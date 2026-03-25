@@ -28,6 +28,16 @@ export default function App() {
   const { locale, setLocale } = useLocaleStore();
 
   useEffect(() => {
+    // Version check — force re-onboarding when app updates significantly
+    const APP_VERSION = 'v2';
+    const storedVersion = localStorage.getItem('fit-version');
+    if (storedVersion !== APP_VERSION) {
+      localStorage.removeItem('fit-onboarded');
+      localStorage.removeItem('fit-profile');
+      localStorage.setItem('fit-version', APP_VERSION);
+      setOnboarded(false);
+      return;
+    }
     setOnboarded(localStorage.getItem('fit-onboarded') === 'true');
   }, []);
 
