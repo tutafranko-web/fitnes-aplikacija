@@ -9,6 +9,7 @@ const tabs = [
   { id: 'training', icon: '🏋️' },
   { id: 'body', icon: '🫀' },
   { id: 'social', icon: '👥' },
+  { id: 'settings', icon: '⚙️' },
 ] as const;
 
 const tabColorMap: Record<string, string> = {
@@ -18,6 +19,7 @@ const tabColorMap: Record<string, string> = {
   training: '#ff6b4a',
   body: '#7c5cfc',
   social: '#ff4d8d',
+  settings: '#8b8fa3',
 };
 
 interface Props {
@@ -34,6 +36,7 @@ export default function BottomTabBar({ activeTab, onTabChange }: Props) {
     training: t.tabs.training,
     body: t.tabs.body,
     social: t.tabs.social,
+    settings: t.common.settings,
   };
 
   return (

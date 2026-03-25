@@ -29,7 +29,7 @@ Rules:
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, history, locale, userContext } = await req.json();
+    const { message, history, locale, userContext, trainerPrompt } = await req.json();
 
     if (!GEMINI_API_KEY) {
       // Fallback mock responses when no API key
@@ -48,13 +48,14 @@ export async function POST(req: NextRequest) {
     const contextBlock = userContext
       ? `\n\nKorisnikovi podaci:\n${JSON.stringify(userContext, null, 2)}`
       : '';
+    const trainerBlock = trainerPrompt || systemPrompt[lang];
 
     const chat = model.startChat({
       history: (history || []).slice(-20).map((m: any) => ({
         role: m.role === 'ai' ? 'model' : 'user',
         parts: [{ text: m.text }],
       })),
-      systemInstruction: systemPrompt[lang] + contextBlock,
+      systemInstruction: trainerBlock + contextBlock,
     });
 
     const result = await chat.sendMessage(message);

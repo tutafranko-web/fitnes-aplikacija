@@ -5,13 +5,35 @@ import { useT } from '@/hooks/useLocale';
 import { useLocaleStore } from '@/hooks/useLocale';
 import { useVoice } from '@/hooks/useVoice';
 import Box from '@/components/ui/Box';
+import { trainers, type Trainer } from '@/lib/constants/trainers';
 
 export default function TrainerTab() {
   const t = useT();
   const locale = useLocaleStore((s) => s.locale);
-  const [msgs, setMsgs] = useState<{ role: string; text: string }[]>([
-    { role: 'ai', text: t.trainer.greeting },
-  ]);
+  const [trainer, setTrainer] = useState<Trainer | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+
+  // Load trainer
+  useEffect(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem('fit-profile') || '{}');
+      setProfile(p);
+      if (p.trainerId) {
+        const tr = trainers.find((t) => t.id === p.trainerId);
+        setTrainer(tr || null);
+      }
+    } catch {}
+  }, []);
+
+  const trainerGreeting = trainer
+    ? (locale === 'hr' ? trainer.greeting.hr : trainer.greeting.en)
+    : t.trainer.greeting;
+
+  const [msgs, setMsgs] = useState<{ role: string; text: string }[]>([]);
+
+  useEffect(() => {
+    if (trainerGreeting) setMsgs([{ role: 'ai', text: trainerGreeting }]);
+  }, [trainerGreeting]);
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [mode, setMode] = useState<'chat' | 'voice'>('chat');
@@ -33,7 +55,8 @@ export default function TrainerTab() {
           message: text,
           history: [...msgs, userMsg],
           locale,
-          userContext: null, // Will include user profile later
+          userContext: profile,
+          trainerPrompt: trainer ? (locale === 'hr' ? trainer.systemPrompt.hr : trainer.systemPrompt.en) : null,
         }),
       });
       const data = await res.json();
@@ -63,6 +86,20 @@ export default function TrainerTab() {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Trainer Header */}
+      {trainer && (
+        <Box glow={trainer.color} className="flex items-center gap-3 !py-3">
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
+            style={{ background: `${trainer.color}15`, border: `2px solid ${trainer.color}44` }}>
+            {trainer.emoji}
+          </div>
+          <div className="flex-1">
+            <div className="text-sm font-bold" style={{ color: trainer.color }}>{trainer.name}</div>
+            <div className="text-[10px] text-fit-muted">{locale === 'hr' ? trainer.specialty.hr : trainer.specialty.en}</div>
+          </div>
+        </Box>
+      )}
+
       {/* Mode Toggle */}
       <div className="flex justify-center gap-2">
         {(['chat', 'voice'] as const).map((m) => {
