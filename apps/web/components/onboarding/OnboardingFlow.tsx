@@ -353,7 +353,7 @@ export default function OnboardingFlow({ onComplete }: Props) {
         <div>
           <h2 className="text-xl font-black text-fit-text mb-1">{hr ? 'Odaberi svog trenera' : 'Choose your trainer'}</h2>
           <p className="text-xs text-fit-muted mb-3">{hr ? 'Na osnovu tvojih odgovora, preporučujemo:' : 'Based on your answers, we recommend:'}</p>
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2.5">
             {(matchedTrainers.length > 0 ? matchedTrainers : trainers).map((tr, i) => {
               const sel = profile.trainerId === tr.id;
               const recommended = i === 0;
@@ -371,11 +371,26 @@ export default function OnboardingFlow({ onComplete }: Props) {
                     </span>
                   )}
                   <div className="flex items-center gap-3">
-                    <span className="text-3xl">{tr.emoji}</span>
-                    <div className="flex-1">
-                      <div className="text-sm font-bold" style={{ color: sel ? tr.color : '#e8eaf0' }}>{tr.name}</div>
-                      <div className="text-[10px] text-fit-muted">{locale === 'hr' ? tr.personality.hr : tr.personality.en}</div>
-                      <div className="text-[10px]" style={{ color: tr.color }}>{locale === 'hr' ? tr.specialty.hr : tr.specialty.en}</div>
+                    <div className="w-14 h-14 rounded-full flex items-center justify-center text-2xl shrink-0"
+                      style={{ background: `${tr.color}20`, border: `2px solid ${tr.color}44` }}>
+                      {tr.emoji}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold" style={{ color: sel ? tr.color : '#e8eaf0' }}>{tr.name}</span>
+                        <span className="text-[9px] text-fit-dim">{tr.city}</span>
+                      </div>
+                      <div className="text-[10px] font-semibold" style={{ color: tr.color }}>{hr ? tr.title.hr : tr.title.en}</div>
+                      <div className="flex gap-1 flex-wrap mt-1">
+                        {tr.specialty.slice(0, 3).map((s) => (
+                          <span key={s} className="text-[8px] py-0.5 px-1.5 rounded-full bg-white/[0.06] text-fit-muted">{s}</span>
+                        ))}
+                      </div>
+                      {sel && (
+                        <div className="text-[10px] text-fit-muted mt-1.5 italic">
+                          &ldquo;{hr ? tr.quote.hr : tr.quote.en}&rdquo;
+                        </div>
+                      )}
                     </div>
                     {sel && <span className="text-lg" style={{ color: tr.color }}>✓</span>}
                   </div>

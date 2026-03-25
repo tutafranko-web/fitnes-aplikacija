@@ -29,7 +29,7 @@ export default function App() {
 
   useEffect(() => {
     // Version check — force re-onboarding when app updates significantly
-    const APP_VERSION = 'v2';
+    const APP_VERSION = 'v3';
     const storedVersion = localStorage.getItem('fit-version');
     if (storedVersion !== APP_VERSION) {
       localStorage.removeItem('fit-onboarded');

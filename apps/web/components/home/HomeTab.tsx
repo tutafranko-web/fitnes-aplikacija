@@ -107,7 +107,7 @@ export default function HomeTab() {
           <div className="flex items-center gap-2 mt-1">
             <span className="text-lg">{trainer.emoji}</span>
             <span className="text-xs text-fit-muted">
-              {trainer.name} — {hr ? trainer.personality.hr : trainer.personality.en}
+              {trainer.name} — {hr ? trainer.title.hr : trainer.title.en}
             </span>
           </div>
         )}

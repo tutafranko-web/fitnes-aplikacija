@@ -95,7 +95,7 @@ export default function TrainerTab() {
           </div>
           <div className="flex-1">
             <div className="text-sm font-bold" style={{ color: trainer.color }}>{trainer.name}</div>
-            <div className="text-[10px] text-fit-muted">{locale === 'hr' ? trainer.specialty.hr : trainer.specialty.en}</div>
+            <div className="text-[10px] text-fit-muted">{trainer.specialty.slice(0, 3).join(' · ')}</div>
           </div>
         </Box>
       )}
