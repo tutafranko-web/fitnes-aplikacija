@@ -60,9 +60,8 @@ export async function POST(req: NextRequest) {
     return Response.json({ text, mood });
   } catch (error: any) {
     console.error('AI Chat error:', error?.message || error);
-    // Fall back to mock response on any error
     return Response.json({
-      text: getMockResponseHR('bok'),
+      text: `⚠️ AI greška: ${(error?.message || 'nepoznato').substring(0, 200)}\n\nKoristim offline odgovor:\n${getMockResponseHR('bok')}`,
       mood: 'calm',
     });
   }
