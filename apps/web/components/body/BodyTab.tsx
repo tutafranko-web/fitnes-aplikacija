@@ -9,6 +9,7 @@ import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
 import HyperBody from './HyperBody';
+import DrFilipConsult from './DrFilipConsult';
 
 const sorenessColors = ['#00f0b5', '#3ea8ff', '#ffc233', '#ff6b4a', '#ff4d8d'];
 
@@ -271,6 +272,9 @@ export default function BodyTab() {
           ))}
         </Box>
       )}
+
+      {/* Dr. Filip Matković — Specialist */}
+      <DrFilipConsult soreness={soreness} />
 
       {/* Weight */}
       <Box>
