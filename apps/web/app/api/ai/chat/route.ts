@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     if (!GEMINI_API_KEY) {
       return Response.json({
-        text: lang === 'hr' ? getMockResponseHR(message) : getMockResponseEN(message),
+        text: `[No API Key found in env] ${lang === 'hr' ? getMockResponseHR(message) : getMockResponseEN(message)}`,
         mood: 'motivated',
       });
     }
