@@ -6,6 +6,7 @@ import { useLocaleStore } from '@/hooks/useLocale';
 import { useVoice } from '@/hooks/useVoice';
 import Box from '@/components/ui/Box';
 import { trainers, type Trainer } from '@/lib/constants/trainers';
+import TrainerAvatar from './TrainerAvatar';
 
 export default function TrainerTab() {
   const t = useT();
@@ -86,16 +87,28 @@ export default function TrainerTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Trainer Header */}
+      {/* Trainer Avatar — Full Body Animated */}
       {trainer && (
-        <Box glow={trainer.color} className="flex items-center gap-3 !py-3">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
-            style={{ background: `${trainer.color}15`, border: `2px solid ${trainer.color}44` }}>
-            {trainer.emoji}
-          </div>
-          <div className="flex-1">
-            <div className="text-sm font-bold" style={{ color: trainer.color }}>{trainer.name}</div>
-            <div className="text-[10px] text-fit-muted">{trainer.specialty.slice(0, 3).join(' · ')}</div>
+        <Box glow={trainer.color} className="!py-2">
+          <div className="flex items-center gap-3">
+            <div className="w-28 shrink-0">
+              <TrainerAvatar
+                trainerId={trainer.id}
+                mood={typing ? 'thinking' : voice.speaking ? 'talking' : voice.listening ? 'listening' : 'idle'}
+                size={112}
+              />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-bold" style={{ color: trainer.color }}>{trainer.name}</div>
+              <div className="text-[10px] text-fit-dim">{trainer.city}</div>
+              <div className="text-[10px] text-fit-muted mt-0.5">{trainer.specialty.slice(0, 3).join(' · ')}</div>
+              <div className="text-[9px] text-fit-dim italic mt-1.5 border-l-2 pl-2 leading-relaxed" style={{ borderColor: `${trainer.color}44` }}>
+                &ldquo;{locale === 'hr' ? trainer.quote.hr.substring(0, 80) : trainer.quote.en.substring(0, 80)}{trainer.quote.hr.length > 80 ? '...' : ''}&rdquo;
+              </div>
+              <div className="text-[8px] text-fit-dim mt-1">
+                {typing ? (locale === 'hr' ? '🤔 Razmišlja...' : '🤔 Thinking...') : voice.speaking ? (locale === 'hr' ? '🗣️ Govori...' : '🗣️ Speaking...') : voice.listening ? (locale === 'hr' ? '👂 Sluša...' : '👂 Listening...') : ''}
+              </div>
+            </div>
           </div>
         </Box>
       )}
