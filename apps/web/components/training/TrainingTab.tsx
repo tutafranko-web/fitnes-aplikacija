@@ -28,6 +28,7 @@ interface Workout {
 
 export default function TrainingTab() {
   const locale = useLocaleStore((s) => s.locale);
+  const hr = locale === 'hr';
   const [activeWorkout, setActiveWorkout] = useState<Workout | null>(null);
   const [timer, setTimer] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -119,12 +120,66 @@ export default function TrainingTab() {
     setRestTimer(exs[idx].rest);
   };
 
-  const generateWorkout = () => {
+  const [genStep, setGenStep] = useState(0); // 0=hidden, 1=questions, 2=generating, 3=done
+  const [genOpts, setGenOpts] = useState({ focus: '', duration: '30', intensity: 'medium', equipment: 'full_gym' });
+  const [generatedWorkout, setGeneratedWorkout] = useState<Workout | null>(null);
+
+  const generateWorkout = async () => {
+    if (genStep === 0) { setGenStep(1); return; }
+    if (genStep !== 1) return;
+    setGenStep(2);
     setGenerating(true);
-    setTimeout(() => {
+
+    // Load profile for context
+    let prof: any = {};
+    try { prof = JSON.parse(localStorage.getItem('fit-profile') || '{}'); } catch {}
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `Generiraj trening. Fokus: ${genOpts.focus || 'full body'}. Trajanje: ${genOpts.duration} min. Intenzitet: ${genOpts.intensity}. Oprema: ${genOpts.equipment}. Ozljede: ${prof.injuries?.join(', ') || 'nema'}. Razina: ${prof.level || 'mid'}. Cilj: ${prof.goal || 'gain'}.
+
+ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
+{"name":"Naziv treninga","duration":${genOpts.duration},"calories":300,"muscles":["Prsa","Triceps"],"exercises":[{"name":"Bench Press","sets":4,"reps":"8","weight":"80kg","rest":90,"done":false},{"name":"Incline DB Press","sets":3,"reps":"12","weight":"30kg","rest":75,"done":false}]}`,
+          history: [],
+          locale,
+          trainerPrompt: 'Ti si fitness AI. Generiraj trening u ČISTOM JSON formatu. Nikakav tekst izvan JSONa. Prilagodi ozljedama.',
+        }),
+      });
+      const data = await res.json();
+
+      // Try parsing JSON from response
+      let workout: Workout | null = null;
+      try {
+        const jsonMatch = data.text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          workout = {
+            id: `gen_${Date.now()}`,
+            name: parsed.name || `${genOpts.focus || 'Full Body'} Workout`,
+            duration: parsed.duration || parseInt(genOpts.duration),
+            calories: parsed.calories || 300,
+            muscles: parsed.muscles || [genOpts.focus],
+            exercises: (parsed.exercises || []).map((e: any) => ({ ...e, done: false })),
+          };
+        }
+      } catch {}
+
+      // Fallback if JSON parsing failed
+      if (!workout || workout.exercises.length === 0) {
+        workout = generateFallbackWorkout(genOpts, prof);
+      }
+
+      setGeneratedWorkout(workout);
       setGenerating(false);
-      // Would call Gemini API here
-    }, 2000);
+      setGenStep(3);
+    } catch {
+      setGeneratedWorkout(generateFallbackWorkout(genOpts, prof));
+      setGenerating(false);
+      setGenStep(3);
+    }
   };
 
   const completedCount = activeWorkout?.exercises.filter((e) => e.done).length || 0;
@@ -212,17 +267,112 @@ export default function TrainingTab() {
     <div className="flex flex-col gap-3.5">
       {/* AI Generate */}
       <Box glow="#7c5cfc">
-        <Lbl icon="🤖" text={locale === 'hr' ? 'AI generiraj trening' : 'AI generate workout'} color="#7c5cfc" />
-        <button
-          onClick={generateWorkout}
-          disabled={generating}
-          className="w-full mt-3 py-4 rounded-2xl text-sm font-black cursor-pointer border-none transition-all"
-          style={{ background: 'linear-gradient(135deg, #7c5cfc, #ff4d8d)', color: '#fff', opacity: generating ? 0.6 : 1 }}
-        >
-          {generating
-            ? (locale === 'hr' ? '🤖 Generiram...' : '🤖 Generating...')
-            : (locale === 'hr' ? '✨ Generiraj personalizirani trening' : '✨ Generate personalized workout')}
-        </button>
+        <Lbl icon="🤖" text={hr ? 'AI generiraj trening' : 'AI generate workout'} color="#7c5cfc" />
+
+        {genStep === 0 && (
+          <button onClick={() => setGenStep(1)}
+            className="w-full mt-3 py-4 rounded-2xl text-sm font-black cursor-pointer border-none"
+            style={{ background: 'linear-gradient(135deg, #7c5cfc, #ff4d8d)', color: '#fff' }}>
+            ✨ {hr ? 'Generiraj personalizirani trening' : 'Generate personalized workout'}
+          </button>
+        )}
+
+        {genStep === 1 && (
+          <div className="mt-3 flex flex-col gap-3 animate-[fadeIn_0.3s_ease]">
+            <div>
+              <div className="text-[10px] text-fit-dim font-bold mb-1">{hr ? 'FOKUS TRENINGA' : 'WORKOUT FOCUS'}</div>
+              <div className="grid grid-cols-4 gap-1">
+                {[
+                  { id: 'chest', l: hr ? 'Prsa' : 'Chest' }, { id: 'back', l: hr ? 'Leđa' : 'Back' },
+                  { id: 'legs', l: hr ? 'Noge' : 'Legs' }, { id: 'shoulders', l: hr ? 'Ramena' : 'Shoulders' },
+                  { id: 'arms', l: hr ? 'Ruke' : 'Arms' }, { id: 'core', l: 'Core' },
+                  { id: 'full_body', l: 'Full Body' }, { id: 'hiit', l: 'HIIT' },
+                ].map((f) => (
+                  <button key={f.id} onClick={() => setGenOpts((o) => ({ ...o, focus: f.id }))}
+                    className="py-2 rounded-xl text-[10px] font-bold cursor-pointer border transition-colors"
+                    style={{
+                      background: genOpts.focus === f.id ? '#7c5cfc20' : 'rgba(255,255,255,0.03)',
+                      borderColor: genOpts.focus === f.id ? '#7c5cfc55' : 'rgba(255,255,255,0.06)',
+                      color: genOpts.focus === f.id ? '#7c5cfc' : '#8b8fa3',
+                    }}>{f.l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-fit-dim font-bold mb-1">{hr ? 'TRAJANJE' : 'DURATION'}</div>
+              <div className="flex gap-1">
+                {['15', '20', '30', '45', '60'].map((d) => (
+                  <button key={d} onClick={() => setGenOpts((o) => ({ ...o, duration: d }))}
+                    className="flex-1 py-2 rounded-xl text-[10px] font-bold cursor-pointer border"
+                    style={{
+                      background: genOpts.duration === d ? '#00f0b520' : 'rgba(255,255,255,0.03)',
+                      borderColor: genOpts.duration === d ? '#00f0b555' : 'rgba(255,255,255,0.06)',
+                      color: genOpts.duration === d ? '#00f0b5' : '#8b8fa3',
+                    }}>{d} min</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-fit-dim font-bold mb-1">{hr ? 'INTENZITET' : 'INTENSITY'}</div>
+              <div className="flex gap-1">
+                {[
+                  { id: 'light', l: hr ? '🌱 Lagano' : '🌱 Light' },
+                  { id: 'medium', l: hr ? '⚡ Srednje' : '⚡ Medium' },
+                  { id: 'hard', l: hr ? '🔥 Teško' : '🔥 Hard' },
+                ].map((i) => (
+                  <button key={i.id} onClick={() => setGenOpts((o) => ({ ...o, intensity: i.id }))}
+                    className="flex-1 py-2 rounded-xl text-[10px] font-bold cursor-pointer border"
+                    style={{
+                      background: genOpts.intensity === i.id ? '#ff6b4a20' : 'rgba(255,255,255,0.03)',
+                      borderColor: genOpts.intensity === i.id ? '#ff6b4a55' : 'rgba(255,255,255,0.06)',
+                      color: genOpts.intensity === i.id ? '#ff6b4a' : '#8b8fa3',
+                    }}>{i.l}</button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setGenStep(0)} className="py-3 px-4 rounded-xl text-xs font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
+                ← {hr ? 'Natrag' : 'Back'}
+              </button>
+              <button onClick={generateWorkout} disabled={!genOpts.focus}
+                className="flex-1 py-3 rounded-xl text-sm font-black cursor-pointer border-none transition-all"
+                style={{ background: genOpts.focus ? 'linear-gradient(135deg, #7c5cfc, #ff4d8d)' : 'rgba(255,255,255,0.04)', color: genOpts.focus ? '#fff' : '#4a4e62' }}>
+                🤖 {hr ? 'Generiraj!' : 'Generate!'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {genStep === 2 && (
+          <div className="flex flex-col items-center gap-3 py-6">
+            <div className="w-12 h-12 rounded-full border-[3px] border-fit-secondary border-t-transparent animate-spin-slow" />
+            <div className="text-sm text-fit-secondary font-bold">{hr ? 'AI generira trening...' : 'AI generating workout...'}</div>
+            <div className="text-[10px] text-fit-muted">{hr ? 'Prilagođavam tvojim ozljedama i ciljevima' : 'Adapting to your injuries and goals'}</div>
+          </div>
+        )}
+
+        {genStep === 3 && generatedWorkout && (
+          <div className="mt-3 animate-[fadeIn_0.3s_ease]">
+            <div className="text-sm font-bold text-fit-accent mb-1">✅ {generatedWorkout.name}</div>
+            <div className="text-[10px] text-fit-muted mb-2">⏱ {generatedWorkout.duration} min · 🔥 {generatedWorkout.calories} kcal · {generatedWorkout.exercises.length} {hr ? 'vježbi' : 'exercises'}</div>
+            {generatedWorkout.exercises.map((ex, i) => (
+              <div key={i} className="text-[11px] text-fit-muted py-0.5">
+                • {ex.name} {ex.sets}×{ex.reps} {ex.weight ? `@ ${ex.weight}` : ''} {ex.note ? <span className="text-fit-warn">{ex.note}</span> : ''}
+              </div>
+            ))}
+            <div className="flex gap-2 mt-3">
+              <button onClick={() => startWorkout(generatedWorkout)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer border-none"
+                style={{ background: 'linear-gradient(135deg, #00f0b5, #3ea8ff)', color: '#000' }}>
+                ▶ {hr ? 'Pokreni!' : 'Start!'}
+              </button>
+              <button onClick={() => { setGenStep(1); setGeneratedWorkout(null); }}
+                className="py-2.5 px-4 rounded-xl text-xs font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
+                🔄 {hr ? 'Ponovno' : 'Retry'}
+              </button>
+            </div>
+          </div>
+        )}
       </Box>
 
       {/* Workout List */}
@@ -263,4 +413,89 @@ export default function TrainingTab() {
       ))}
     </div>
   );
+}
+
+function generateFallbackWorkout(opts: any, prof: any): Workout {
+  const focus = opts.focus || 'full_body';
+  const dur = parseInt(opts.duration) || 30;
+  const injuries = prof?.injuries || [];
+  const hasKnee = injuries.some((i: string) => i.includes('knee'));
+  const hasShoulder = injuries.some((i: string) => i.includes('shoulder'));
+  const hasBack = injuries.some((i: string) => i.includes('back'));
+
+  const exerciseDB: Record<string, Exercise[]> = {
+    chest: [
+      { name: 'Bench Press', sets: 4, reps: '8', weight: '70kg', rest: 90, done: false },
+      { name: 'Incline DB Press', sets: 3, reps: '12', weight: '26kg', rest: 75, done: false },
+      { name: 'Cable Fly', sets: 3, reps: '15', weight: '14kg', rest: 60, done: false },
+      { name: 'Push-ups', sets: 3, reps: '15', rest: 45, done: false },
+      { name: 'Dips', sets: 3, reps: '10', rest: 60, done: false, note: hasShoulder ? '⚠️ Smanjen ROM' : undefined },
+    ],
+    back: [
+      { name: 'Pull-ups', sets: 4, reps: '8', rest: 90, done: false },
+      { name: 'Barbell Row', sets: 3, reps: '10', weight: '60kg', rest: 75, done: false, note: hasBack ? '⚠️ Drži neutralnu kralježnicu' : undefined },
+      { name: 'Lat Pulldown', sets: 3, reps: '12', weight: '55kg', rest: 60, done: false },
+      { name: 'Face Pull', sets: 3, reps: '15', weight: '16kg', rest: 45, done: false },
+      { name: 'Seated Cable Row', sets: 3, reps: '12', weight: '50kg', rest: 60, done: false },
+    ],
+    legs: [
+      { name: hasKnee ? 'Leg Press' : 'Squat', sets: 4, reps: hasKnee ? '12' : '8', weight: hasKnee ? '120kg' : '80kg', rest: 120, done: false, note: hasKnee ? '⚠️ Prilagođeno za koljeno' : undefined },
+      { name: 'Romanian Deadlift', sets: 3, reps: '10', weight: '70kg', rest: 90, done: false },
+      { name: hasKnee ? 'Leg Extension (lagan)' : 'Walking Lunges', sets: 3, reps: '12', weight: hasKnee ? '30kg' : '20kg', rest: 60, done: false },
+      { name: 'Leg Curl', sets: 3, reps: '12', weight: '40kg', rest: 60, done: false },
+      { name: 'Calf Raise', sets: 4, reps: '15', weight: '60kg', rest: 45, done: false },
+    ],
+    shoulders: [
+      { name: hasShoulder ? 'Seated DB Press (lagan)' : 'Overhead Press', sets: 4, reps: hasShoulder ? '12' : '8', weight: hasShoulder ? '14kg' : '40kg', rest: 90, done: false },
+      { name: 'Lateral Raise', sets: 3, reps: '15', weight: '10kg', rest: 45, done: false },
+      { name: 'Face Pull', sets: 3, reps: '15', weight: '16kg', rest: 45, done: false },
+      { name: 'Reverse Fly', sets: 3, reps: '15', weight: '8kg', rest: 45, done: false },
+    ],
+    full_body: [
+      { name: hasKnee ? 'Leg Press' : 'Squat', sets: 3, reps: '8', weight: '70kg', rest: 90, done: false },
+      { name: 'Bench Press', sets: 3, reps: '8', weight: '60kg', rest: 90, done: false },
+      { name: 'Barbell Row', sets: 3, reps: '10', weight: '55kg', rest: 75, done: false },
+      { name: 'Overhead Press', sets: 3, reps: '10', weight: '35kg', rest: 75, done: false },
+      { name: 'Romanian Deadlift', sets: 3, reps: '10', weight: '60kg', rest: 75, done: false },
+      { name: 'Plank', sets: 3, reps: '45s', rest: 45, done: false },
+    ],
+    hiit: [
+      { name: 'Burpees', sets: 4, reps: '12', rest: 30, done: false },
+      { name: hasKnee ? 'Mountain Climbers' : 'Jump Squats', sets: 4, reps: '15', rest: 30, done: false },
+      { name: 'Kettlebell Swings', sets: 4, reps: '15', weight: '16kg', rest: 30, done: false },
+      { name: 'Battle Ropes', sets: 4, reps: '30s', rest: 30, done: false },
+      { name: 'Box Jumps', sets: 4, reps: '10', rest: 30, done: false, note: hasKnee ? '⚠️ Zamijeni step-upom' : undefined },
+    ],
+    arms: [
+      { name: 'Barbell Curl', sets: 3, reps: '10', weight: '30kg', rest: 60, done: false },
+      { name: 'Tricep Pushdown', sets: 3, reps: '12', weight: '25kg', rest: 60, done: false },
+      { name: 'Hammer Curl', sets: 3, reps: '12', weight: '14kg', rest: 45, done: false },
+      { name: 'Overhead Tricep Extension', sets: 3, reps: '12', weight: '18kg', rest: 45, done: false },
+      { name: 'Preacher Curl', sets: 3, reps: '10', weight: '25kg', rest: 60, done: false },
+    ],
+    core: [
+      { name: 'Plank', sets: 3, reps: '60s', rest: 45, done: false },
+      { name: 'Hanging Leg Raise', sets: 3, reps: '12', rest: 60, done: false },
+      { name: 'Cable Woodchop', sets: 3, reps: '12/strana', weight: '15kg', rest: 45, done: false },
+      { name: 'Ab Wheel Rollout', sets: 3, reps: '10', rest: 60, done: false, note: hasBack ? '⚠️ Smanjen ROM' : undefined },
+      { name: 'Pallof Press', sets: 3, reps: '12/strana', weight: '12kg', rest: 45, done: false },
+    ],
+  };
+
+  const focusNames: Record<string, string> = {
+    chest: 'Push — Prsa & Triceps', back: 'Pull — Leđa & Biceps', legs: 'Noge & Gluteus',
+    shoulders: 'Ramena & Gornji dio', full_body: 'Full Body', hiit: 'HIIT Circuit',
+    arms: 'Ruke — Biceps & Triceps', core: 'Core & Trbuh',
+  };
+
+  const exs = (exerciseDB[focus] || exerciseDB.full_body).slice(0, dur <= 20 ? 4 : dur <= 30 ? 5 : 6);
+
+  return {
+    id: `gen_${Date.now()}`,
+    name: focusNames[focus] || 'Personalizirani trening',
+    duration: dur,
+    calories: dur * 8,
+    muscles: focus === 'full_body' ? ['Sve grupe'] : [focusNames[focus]?.split(' ')[0] || focus],
+    exercises: exs,
+  };
 }
