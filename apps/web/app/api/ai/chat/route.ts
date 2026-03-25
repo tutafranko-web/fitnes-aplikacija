@@ -29,27 +29,37 @@ export async function POST(req: NextRequest) {
 
     if (!GEMINI_API_KEY) {
       return Response.json({
-        text: `[No API Key found in env] ${lang === 'hr' ? getMockResponseHR(message) : getMockResponseEN(message)}`,
+        text: lang === 'hr' ? getMockResponseHR(message) : getMockResponseEN(message),
         mood: 'motivated',
       });
     }
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+    // Sanitize system instruction
+    const sysInstruction = ((trainerPrompt || defaultPrompt[lang]) +
+      (userContext ? '\n\nUser profile: ' + JSON.stringify(userContext) : ''))
+      .replace(/[\x00-\x1F\x7F]/g, ' '); // strip control chars
+
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-lite',
-      systemInstruction: (trainerPrompt || defaultPrompt[lang]) +
-        (userContext ? `\n\nUser profile:\n${JSON.stringify(userContext, null, 2)}` : ''),
+      model: 'gemini-1.5-flash',
     });
 
-    const chatHistory = (history || []).slice(-20)
-      .filter((m: any) => m.text && m.text.trim())
+    // Filter and sanitize history
+    const chatHistory = (history || []).slice(-15)
+      .filter((m: any) => m && m.text && typeof m.text === 'string' && m.text.trim())
       .map((m: any) => ({
         role: m.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: m.text }],
+        parts: [{ text: String(m.text).substring(0, 500) }],
       }));
 
-    const chat = model.startChat({ history: chatHistory });
-    const result = await chat.sendMessage(message);
+    const chat = model.startChat({
+      history: chatHistory.length > 0 ? chatHistory : undefined,
+    });
+
+    // Prepend system instruction to user message
+    const fullMessage = sysInstruction + '\n\n---\nUser message: ' + message;
+    const result = await chat.sendMessage(fullMessage);
     const text = result.response.text();
 
     let mood = 'happy';
