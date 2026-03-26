@@ -80,11 +80,9 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ text, mood });
   } catch (error: any) {
-    const errMsg = error?.message || String(error);
-    console.error('AI Chat error:', errMsg);
-    // Include error in response so user sees what happened
+    console.error('AI Chat error:', error?.message || error);
     return Response.json({
-      text: `[AI: ${errMsg.substring(0, 100)}]\n\n${getMockResponseHR('bok')}`,
+      text: getMockResponseHR('bok'),
       mood: 'calm',
     });
   }
