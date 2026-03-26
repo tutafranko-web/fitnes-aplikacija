@@ -23,23 +23,40 @@ export interface ExerciseInfo {
   injuryAvoid?: string[];  // injury IDs where exercise should be avoided
   instructions: { hr: string; en: string };
   tips: { hr: string; en: string };
-  // Animation keyframes: body part positions at key points
-  animation: ExerciseAnimation;
+  // Animation keyframes: body part positions at key points (optional for extended DB)
+  animation?: ExerciseAnimation;
 }
 
 export interface ExerciseAnimation {
   type: 'upper' | 'lower' | 'full' | 'core' | 'cardio';
-  // Keyframes describe stick figure positions
   frames: AnimFrame[];
-  tempo: string; // e.g. "2-0-2-0" (eccentric-pause-concentric-pause)
+  tempo: string;
 }
 
 export interface AnimFrame {
-  // Normalized positions 0-1 for stick figure
-  torsoAngle: number;    // 0=upright, 90=horizontal
-  armAngle: number;      // degrees from torso
-  legAngle: number;      // degrees bend at knee
+  torsoAngle: number;
+  armAngle: number;
+  legAngle: number;
   label?: string;
+}
+
+// Simplified exercise type without animation (for extended DB)
+export interface ExerciseCompact {
+  id: string;
+  name: string;
+  nameHr: string;
+  primary: string[];
+  secondary: string[];
+  equipment: string[];
+  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  category: string;
+  defaultSets: number;
+  defaultReps: string;
+  defaultRest: number;
+  injuryCaution?: string[];
+  injuryAvoid?: string[];
+  instructions: { hr: string; en: string };
+  tips: { hr: string; en: string };
 }
 
 // ==========================================
@@ -520,6 +537,23 @@ export const exercises: ExerciseInfo[] = [
 // FILTER FUNCTIONS
 // ==========================================
 
+// Lazy-loaded extended exercises (merged on first call)
+let _allExercisesCache: ExerciseInfo[] | null = null;
+
+export function getAllExercises(): ExerciseInfo[] {
+  if (_allExercisesCache) return _allExercisesCache;
+  try {
+    // Dynamic import would be ideal but for sync access, we import at build time
+    const ext = require('./exerciseDB_extended').extendedExercises as ExerciseCompact[];
+    const existingIds = new Set(exercises.map((e) => e.id));
+    const deduped = ext.filter((e) => !existingIds.has(e.id));
+    _allExercisesCache = [...exercises, ...deduped as any[]];
+  } catch {
+    _allExercisesCache = [...exercises];
+  }
+  return _allExercisesCache;
+}
+
 export function filterExercises(opts: {
   muscles?: MuscleGroup[];
   equipment?: Equipment[];
@@ -528,13 +562,13 @@ export function filterExercises(opts: {
   avoidInjuries?: string[];
   search?: string;
 }): ExerciseInfo[] {
-  let result = [...exercises];
+  let result = [...getAllExercises()];
 
   if (opts.muscles && opts.muscles.length > 0) {
-    result = result.filter((e) => e.primary.some((m) => opts.muscles!.includes(m)));
+    result = result.filter((e) => (e.primary as string[]).some((m) => opts.muscles!.includes(m as MuscleGroup)));
   }
   if (opts.equipment && opts.equipment.length > 0) {
-    result = result.filter((e) => e.equipment.some((eq) => opts.equipment!.includes(eq)));
+    result = result.filter((e) => (e.equipment as string[]).some((eq) => opts.equipment!.includes(eq as Equipment)));
   }
   if (opts.difficulty && opts.difficulty.length > 0) {
     result = result.filter((e) => opts.difficulty!.includes(e.difficulty));
@@ -554,7 +588,7 @@ export function filterExercises(opts: {
 }
 
 export function getExerciseById(id: string): ExerciseInfo | undefined {
-  return exercises.find((e) => e.id === id);
+  return getAllExercises().find((e) => e.id === id);
 }
 
 export const muscleGroupLabels: Record<MuscleGroup, { hr: string; en: string }> = {

@@ -16,15 +16,17 @@ export default function ExerciseDemo({ exercise, onClose }: Props) {
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(true);
 
-  const frames = exercise.animation.frames;
+  const defaultFrames = [{ torsoAngle: 0, armAngle: 0, legAngle: 0, label: 'Start' }, { torsoAngle: 20, armAngle: 60, legAngle: 30, label: 'Move' }, { torsoAngle: 0, armAngle: 0, legAngle: 0, label: 'Return' }];
+  const frames = exercise.animation?.frames || defaultFrames;
   const numFrames = frames.length;
 
   useEffect(() => {
     if (!playing || numFrames <= 1) return;
-    const speed = exercise.animation.tempo === 'explosive' || exercise.animation.tempo === 'fast' ? 400 : 800;
+    const tempo = exercise.animation?.tempo || '2-0-2-0';
+    const speed = tempo === 'explosive' || tempo === 'fast' ? 400 : 800;
     const iv = setInterval(() => setFrame((f) => (f + 1) % numFrames), speed);
     return () => clearInterval(iv);
-  }, [playing, numFrames, exercise.animation.tempo]);
+  }, [playing, numFrames, exercise.animation?.tempo]);
 
   const f = frames[frame] || frames[0];
 
@@ -169,7 +171,7 @@ export default function ExerciseDemo({ exercise, onClose }: Props) {
             <div className="flex gap-2 flex-wrap">
               <div className="text-[10px] text-fit-dim">{hr ? 'Preporučeno' : 'Recommended'}: <span className="text-fit-text font-bold">{exercise.defaultSets}×{exercise.defaultReps}</span></div>
               <div className="text-[10px] text-fit-dim">{hr ? 'Odmor' : 'Rest'}: <span className="text-fit-text font-bold">{exercise.defaultRest}s</span></div>
-              <div className="text-[10px] text-fit-dim">Tempo: <span className="text-fit-text font-bold">{exercise.animation.tempo}</span></div>
+              <div className="text-[10px] text-fit-dim">Tempo: <span className="text-fit-text font-bold">{exercise.animation?.tempo || '2-0-2-0'}</span></div>
               <div className="text-[10px] text-fit-dim">{hr ? 'Težina' : 'Difficulty'}: <span className="font-bold" style={{ color: exercise.difficulty === 'beginner' ? '#00f0b5' : exercise.difficulty === 'intermediate' ? '#ffc233' : '#ff6b4a' }}>{exercise.difficulty}</span></div>
             </div>
 
