@@ -8,6 +8,7 @@ import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
 import { logWorkout } from '@/lib/dataStore';
 import RunningMap from '@/components/running/RunningMap';
+import WeeklySchedule from './WeeklySchedule';
 
 interface Exercise {
   name: string;
@@ -313,8 +314,12 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
   return (
     <div className="flex flex-col gap-3.5">
       {/* AI Generate */}
+      {/* Weekly Schedule Planner */}
+      <WeeklySchedule />
+
+      {/* Quick AI Workout Generator */}
       <Box glow="#7c5cfc">
-        <Lbl icon="🤖" text={hr ? 'AI generiraj trening' : 'AI generate workout'} color="#7c5cfc" />
+        <Lbl icon="🤖" text={hr ? 'Brzi AI trening' : 'Quick AI workout'} color="#7c5cfc" />
 
         {genStep === 0 && (
           <button onClick={() => setGenStep(1)}
