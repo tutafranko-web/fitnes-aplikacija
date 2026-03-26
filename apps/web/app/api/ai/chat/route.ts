@@ -45,16 +45,27 @@ export async function POST(req: NextRequest) {
       model: 'gemini-2.5-flash',
     });
 
-    // Filter and sanitize history
-    const chatHistory = (history || []).slice(-15)
-      .filter((m: any) => m && m.text && typeof m.text === 'string' && m.text.trim())
-      .map((m: any) => ({
-        role: m.role === 'ai' ? 'model' : 'user',
-        parts: [{ text: String(m.text).substring(0, 500) }],
-      }));
+    // Filter history: must start with 'user', alternate user/model
+    const rawHistory = (history || []).slice(-15)
+      .filter((m: any) => m && m.text && typeof m.text === 'string' && m.text.trim());
+
+    // Ensure valid alternating history starting with 'user'
+    const chatHistory: { role: string; parts: { text: string }[] }[] = [];
+    let lastRole = '';
+    for (const m of rawHistory) {
+      const role = m.role === 'ai' ? 'model' : 'user';
+      if (role === lastRole) continue; // skip consecutive same roles
+      if (chatHistory.length === 0 && role !== 'user') continue; // must start with user
+      chatHistory.push({ role, parts: [{ text: String(m.text).substring(0, 500) }] });
+      lastRole = role;
+    }
+    // Must end with 'user' for Gemini (we'll send new message separately)
+    if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === 'user') {
+      chatHistory.pop(); // remove last user msg since we send it as new message
+    }
 
     const chat = model.startChat({
-      history: chatHistory.length > 0 ? chatHistory : undefined,
+      history: chatHistory.length >= 2 ? chatHistory : undefined,
     });
 
     // Prepend system instruction to user message
@@ -69,9 +80,11 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ text, mood });
   } catch (error: any) {
-    console.error('AI Chat error:', error?.message || error);
+    const errMsg = error?.message || String(error);
+    console.error('AI Chat error:', errMsg);
+    // Include error in response so user sees what happened
     return Response.json({
-      text: getMockResponseHR('bok'),
+      text: `[AI: ${errMsg.substring(0, 100)}]\n\n${getMockResponseHR('bok')}`,
       mood: 'calm',
     });
   }
