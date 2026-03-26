@@ -7,6 +7,7 @@ import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
 import { logWorkout } from '@/lib/dataStore';
+import RunningMap from '@/components/running/RunningMap';
 
 interface Exercise {
   name: string;
@@ -453,6 +454,9 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
           </div>
         </Box>
       )}
+
+      {/* GPS Running Map */}
+      <RunningMap />
 
       {/* Sport-Specific Programs */}
       {profile?.sports?.length > 0 && (

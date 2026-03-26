@@ -11,6 +11,7 @@ import TrainingTab from '@/components/training/TrainingTab';
 import SocialTab from '@/components/social/SocialTab';
 import SettingsTab from '@/components/settings/SettingsTab';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
+import { requestPermission, registerServiceWorker, startReminders } from '@/lib/notifications';
 
 const tabColors: Record<string, string> = {
   home: '#00f0b5',
@@ -40,6 +41,16 @@ export default function App() {
     }
     setOnboarded(localStorage.getItem('fit-onboarded') === 'true');
   }, []);
+
+  // Init notifications
+  useEffect(() => {
+    if (onboarded) {
+      registerServiceWorker();
+      requestPermission().then((granted) => {
+        if (granted) startReminders(locale as 'hr' | 'en');
+      });
+    }
+  }, [onboarded, locale]);
 
   const handleOnboardingComplete = (profile: any) => {
     localStorage.setItem('fit-onboarded', 'true');
