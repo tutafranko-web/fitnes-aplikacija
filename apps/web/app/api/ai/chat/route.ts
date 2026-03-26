@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error('AI Chat error:', error?.message || error);
     return Response.json({
-      text: `⚠️ AI greška: ${(error?.message || 'nepoznato').substring(0, 200)}\n\nKoristim offline odgovor:\n${getMockResponseHR('bok')}`,
+      text: getMockResponseHR('bok'),
       mood: 'calm',
     });
   }
