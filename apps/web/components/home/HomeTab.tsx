@@ -59,7 +59,7 @@ export default function HomeTab() {
       hasMotion = true;
       const total = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2);
       const now = Date.now();
-      if (now - lastTime < 300) return;
+      if (now - lastTime < 500) return; // 500ms debounce to prevent excess re-renders
       const diff = Math.abs(total - lastAccel);
       if (diff > 3 && diff < 20) {
         stepCount++;

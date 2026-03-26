@@ -3,6 +3,31 @@ import { NextRequest } from 'next/server';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 
+// Simple in-memory rate limiter (per IP, 20 req/min)
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 20;
+const RATE_WINDOW = 60_000;
+
+function checkRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT) return false;
+  entry.count++;
+  return true;
+}
+
+function sanitizeInput(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .substring(0, 2000) // Max 2000 chars
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Strip control chars
+    .trim();
+}
+
 const defaultPrompt = {
   hr: `Ti si FIT AI Trener — osobni fitness trener u aplikaciji.
 Pravila:
@@ -23,9 +48,24 @@ Rules:
 };
 
 export async function POST(req: NextRequest) {
+  // Rate limiting
+  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+  if (!checkRateLimit(ip)) {
+    return Response.json({ text: 'Previše zahtjeva. Pokušaj za minutu. / Too many requests. Try in a minute.', mood: 'calm' }, { status: 429 });
+  }
+
   try {
-    const { message, history, locale, userContext, trainerPrompt } = await req.json();
+    const body = await req.json();
+    const message = sanitizeInput(body.message || '');
+    const history = body.history || [];
+    const locale = body.locale;
+    const userContext = body.userContext;
+    const trainerPrompt = body.trainerPrompt;
     const lang = (locale === 'hr' ? 'hr' : 'en') as 'hr' | 'en';
+
+    if (!message) {
+      return Response.json({ text: lang === 'hr' ? 'Pošalji poruku.' : 'Send a message.', mood: 'calm' }, { status: 400 });
+    }
 
     if (!GEMINI_API_KEY) {
       return Response.json({
