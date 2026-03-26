@@ -16,6 +16,8 @@ export default function SocialTab() {
   const [storyIdx, setStoryIdx] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [viewProfile, setViewProfile] = useState<string | null>(null);
 
   // Create post state
   const [newPost, setNewPost] = useState({ text: '', sport: '', type: 'text' as 'text' | 'image' | 'video', media: '', isStory: false });
@@ -199,10 +201,14 @@ export default function SocialTab() {
 
           {/* Media buttons */}
           <div className="flex gap-2 mt-3">
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={(e) => handleMediaUpload(e, 'image')} className="hidden" />
             <input ref={fileRef} type="file" accept="image/*" onChange={(e) => handleMediaUpload(e, 'image')} className="hidden" />
-            <input ref={videoRef} type="file" accept="video/*" onChange={(e) => handleMediaUpload(e, 'video')} className="hidden" />
+            <input ref={videoRef} type="file" accept="video/*" capture="environment" onChange={(e) => handleMediaUpload(e, 'video')} className="hidden" />
+            <button onClick={() => cameraRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted hover:text-fit-accent transition-colors">
+              📷 {hr ? 'Kamera' : 'Camera'}
+            </button>
             <button onClick={() => fileRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted hover:text-fit-accent transition-colors">
-              📸 {hr ? 'Slika' : 'Photo'}
+              🖼️ {hr ? 'Galerija' : 'Gallery'}
             </button>
             <button onClick={() => videoRef.current?.click()} className="flex-1 py-2.5 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted hover:text-fit-accent transition-colors">
               🎬 Video
@@ -233,14 +239,47 @@ export default function SocialTab() {
         </Box>
       )}
 
+      {/* Profile View */}
+      {viewProfile && (
+        <Box glow="#7c5cfc">
+          <button onClick={() => setViewProfile(null)} className="text-[10px] text-fit-muted cursor-pointer bg-transparent border-none mb-2">← {hr ? 'Natrag' : 'Back'}</button>
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center text-3xl" style={{ background: 'linear-gradient(135deg, #7c5cfc, #ff4d8d)', padding: 2 }}>
+              <div className="w-full h-full rounded-full bg-fit-bg flex items-center justify-center">
+                {posts.find((p) => p.name === viewProfile)?.avatar || '👤'}
+              </div>
+            </div>
+            <div>
+              <div className="text-base font-bold text-fit-text">{viewProfile}</div>
+              <div className="text-[10px] text-fit-muted">{hr ? 'Aktivni korisnik' : 'Active user'}</div>
+              <div className="flex gap-3 mt-1">
+                <div className="text-center"><div className="text-sm font-black text-fit-accent">{posts.filter((p) => p.name === viewProfile).length}</div><div className="text-[8px] text-fit-dim">{hr ? 'Objave' : 'Posts'}</div></div>
+                <div className="text-center"><div className="text-sm font-black text-fit-secondary">248</div><div className="text-[8px] text-fit-dim">{hr ? 'Pratitelji' : 'Followers'}</div></div>
+                <div className="text-center"><div className="text-sm font-black text-fit-blue">156</div><div className="text-[8px] text-fit-dim">{hr ? 'Prati' : 'Following'}</div></div>
+              </div>
+            </div>
+          </div>
+          <button className="w-full py-2.5 rounded-xl text-xs font-bold cursor-pointer border-none mb-3" style={{ background: 'linear-gradient(135deg, #7c5cfc, #ff4d8d)', color: '#fff' }}>
+            + {hr ? 'Prati' : 'Follow'}
+          </button>
+          <Lbl icon="📱" text={hr ? 'Objave' : 'Posts'} />
+          {posts.filter((p) => p.name === viewProfile).map((p) => (
+            <div key={p.id} className="py-2 border-b border-fit-border/20 text-xs text-fit-text">{p.text}</div>
+          ))}
+          {posts.filter((p) => p.name === viewProfile).length === 0 && (
+            <div className="text-center py-4 text-[11px] text-fit-dim">{hr ? 'Nema objava' : 'No posts'}</div>
+          )}
+        </Box>
+      )}
+
       {/* Feed */}
-      {view === 'feed' && posts.map((p) => (
+      {view === 'feed' && !viewProfile && posts.map((p) => (
         <Box key={p.id}>
           <div className="flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-lg">{p.avatar}</div>
+            <div className="w-9 h-9 rounded-full bg-white/[0.06] flex items-center justify-center text-lg cursor-pointer" onClick={() => setViewProfile(p.name)}>{p.avatar}</div>
             <div className="flex-1">
               <div className="flex items-center gap-1">
-                <span className="text-xs font-bold text-fit-text">{p.name}</span>
+                <span className="text-xs font-bold text-fit-text cursor-pointer hover:text-fit-accent transition-colors" onClick={() => setViewProfile(p.name)}>{p.name}</span>
                 {p.type !== 'text' && <span className="text-[8px] text-fit-secondary">{p.type === 'video' ? '🎬' : '📸'}</span>}
               </div>
               <div className="text-[9px] text-fit-dim">{p.time} {hr ? 'prije' : 'ago'}</div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useT } from '@/hooks/useLocale';
 import { useLocaleStore } from '@/hooks/useLocale';
 import { useVoice } from '@/hooks/useVoice';
@@ -13,8 +13,9 @@ export default function TrainerTab() {
   const t = useT();
   const locale = useLocaleStore((s) => s.locale);
   const hr = locale === 'hr';
+  const trainerRef = useRef<Trainer | null>(null);
+  const profileRef = useRef<any>(null);
   const [trainer, setTrainer] = useState<Trainer | null>(null);
-  const [profile, setProfile] = useState<any>(null);
   const { msgs, addMsg, setMsgs } = useTrainerChat();
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
@@ -23,14 +24,17 @@ export default function TrainerTab() {
   const chatRef = useRef<HTMLDivElement>(null);
   const voice = useVoice();
 
-  // Load trainer and profile — only set greeting if no msgs yet
+  // Load trainer and profile ONCE
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem('fit-profile') || '{}');
-      setProfile(p);
+      profileRef.current = p;
       if (p.trainerId) {
         const tr = trainers.find((t) => t.id === p.trainerId);
-        if (tr) setTrainer(tr);
+        if (tr) {
+          trainerRef.current = tr;
+          setTrainer(tr);
+        }
       }
     } catch {}
   }, []);
@@ -43,7 +47,7 @@ export default function TrainerTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trainer]);
 
-  // Update avatar mood
+  // Avatar mood
   useEffect(() => {
     if (typing) setAvatarMood('thinking');
     else if (voice.speaking) setAvatarMood('talking');
@@ -51,11 +55,16 @@ export default function TrainerTab() {
     else setAvatarMood('idle');
   }, [typing, voice.speaking, voice.listening]);
 
-  const handleSend = useCallback(async (text: string) => {
+  // Use ref-based send to avoid stale closures
+  const handleSend = async (text: string) => {
     if (!text?.trim()) return;
     addMsg({ role: 'user', text });
     setInput('');
     setTyping(true);
+
+    const tr = trainerRef.current;
+    const prof = profileRef.current;
+    const trainerPrompt = tr ? (hr ? tr.systemPrompt.hr : tr.systemPrompt.en) : null;
 
     try {
       const res = await fetch('/api/ai/chat', {
@@ -63,10 +72,10 @@ export default function TrainerTab() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
-          history: msgs.slice(-15),
+          history: useTrainerChat.getState().msgs.slice(-15),
           locale,
-          userContext: profile,
-          trainerPrompt: trainer ? (hr ? trainer.systemPrompt.hr : trainer.systemPrompt.en) : null,
+          userContext: prof,
+          trainerPrompt,
         }),
       });
 
@@ -77,12 +86,12 @@ export default function TrainerTab() {
       addMsg({ role: 'ai', text: data.text });
       if (mode === 'voice') voice.speak(data.text);
       setTimeout(() => setAvatarMood('idle'), 3000);
-    } catch (err) {
+    } catch {
       setTyping(false);
       setAvatarMood('idle');
-      addMsg({ role: 'ai', text: hr ? 'Tu sam za tebe! 💪 Pitaj me za trening, prehranu ili oporavak.' : "I'm here for you! 💪 Ask me about training, nutrition or recovery." });
+      addMsg({ role: 'ai', text: hr ? 'Greška u komunikaciji. Pokušaj ponovno.' : 'Communication error. Try again.' });
     }
-  }, [msgs, locale, profile, trainer, hr, mode, voice, addMsg]);
+  };
 
   // Auto-send on voice end
   useEffect(() => {
@@ -92,7 +101,7 @@ export default function TrainerTab() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [voice.listening]);
 
-  // Auto-scroll chat
+  // Auto-scroll
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [msgs, typing]);
@@ -101,7 +110,7 @@ export default function TrainerTab() {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Trainer Avatar — Full Body */}
+      {/* Trainer Avatar */}
       {trainer && (
         <Box glow={trainerColor} className="!py-2">
           <div className="flex items-center gap-3">
@@ -116,10 +125,7 @@ export default function TrainerTab() {
                 &ldquo;{(hr ? trainer.quote.hr : trainer.quote.en).substring(0, 80)}&rdquo;
               </div>
               <div className="text-[8px] mt-1" style={{ color: trainerColor }}>
-                {avatarMood === 'thinking' ? (hr ? '🤔 Razmišlja...' : '🤔 Thinking...') :
-                 avatarMood === 'talking' ? (hr ? '🗣️ Govori...' : '🗣️ Speaking...') :
-                 avatarMood === 'listening' ? (hr ? '👂 Sluša...' : '👂 Listening...') :
-                 avatarMood === 'excited' ? (hr ? '💪 Spreman!' : '💪 Ready!') : ''}
+                {avatarMood === 'thinking' ? '🤔 ...' : avatarMood === 'talking' ? '🗣️ ...' : avatarMood === 'listening' ? '👂 ...' : avatarMood === 'excited' ? '💪' : ''}
               </div>
             </div>
           </div>
@@ -141,15 +147,13 @@ export default function TrainerTab() {
         })}
       </div>
 
-      {/* Voice Interface */}
+      {/* Voice */}
       {mode === 'voice' && (
         <Box glow={voice.listening ? '#7c5cfc' : voice.speaking ? '#00f0b5' : undefined} className="text-center">
           {!voice.supported ? (
             <div className="p-5">
-              <div className="text-sm text-fit-warn font-bold mb-2">⚠️ {t.trainer.voice}</div>
-              <div className="text-xs text-fit-muted leading-relaxed">
-                {t.trainer.voiceUnsupported} <b className="text-fit-accent">{t.trainer.useChromeOrEdge}</b>
-              </div>
+              <div className="text-sm text-fit-warn font-bold mb-2">⚠️</div>
+              <div className="text-xs text-fit-muted">{t.trainer.voiceUnsupported} <b className="text-fit-accent">{t.trainer.useChromeOrEdge}</b></div>
             </div>
           ) : (
             <>
@@ -177,18 +181,12 @@ export default function TrainerTab() {
                   <div className="text-[13px] text-fit-text font-semibold">&ldquo;{voice.transcript}&rdquo;</div>
                 </div>
               )}
-              {voice.speaking && (
-                <button onClick={voice.stopSpeaking} className="mt-2.5 rounded-[10px] py-1.5 px-4 text-[11px] font-bold cursor-pointer font-outfit border"
-                  style={{ background: '#ff6b4a20', borderColor: '#ff6b4a44', color: '#ff6b4a' }}>
-                  ⏹ {t.trainer.stop}
-                </button>
-              )}
             </>
           )}
         </Box>
       )}
 
-      {/* Chat Messages */}
+      {/* Chat */}
       <div ref={chatRef} className="flex flex-col gap-2 bg-fit-card rounded-[22px] p-3 border border-fit-border overflow-auto" style={{ maxHeight: mode === 'voice' ? 180 : 360, minHeight: 120 }}>
         {msgs.map((m, i) => (
           <div key={i} className="flex gap-1.5" style={{ flexDirection: m.role === 'user' ? 'row-reverse' : 'row', alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '90%' }}>
@@ -198,9 +196,7 @@ export default function TrainerTab() {
                 {trainer?.emoji || '🤖'}
               </div>
             )}
-            {m.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-fit-accent/20 flex items-center justify-center text-xs shrink-0 mt-1">👤</div>
-            )}
+            {m.role === 'user' && <div className="w-6 h-6 rounded-full bg-fit-accent/20 flex items-center justify-center text-xs shrink-0 mt-1">👤</div>}
             <div className="py-2.5 px-3 rounded-[16px] text-xs leading-relaxed whitespace-pre-wrap"
               style={{
                 background: m.role === 'user' ? `linear-gradient(135deg, ${trainerColor}, ${trainerColor}aa)` : 'rgba(255,255,255,0.05)',
@@ -208,21 +204,14 @@ export default function TrainerTab() {
                 fontWeight: m.role === 'user' ? 700 : 400,
                 borderBottomRightRadius: m.role === 'user' ? 4 : 16,
                 borderBottomLeftRadius: m.role === 'ai' ? 4 : 16,
-              }}>
-              {m.text}
-            </div>
+              }}>{m.text}</div>
           </div>
         ))}
         {typing && (
           <div className="flex gap-1.5 self-start">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs"
-              style={{ background: `${trainerColor}20` }}>
-              {trainer?.emoji || '🤖'}
-            </div>
+            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: `${trainerColor}20` }}>{trainer?.emoji || '🤖'}</div>
             <div className="py-2.5 px-4 rounded-[16px] bg-white/[0.05] flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: trainerColor, animation: `pulse3 1s ${i * 0.2}s infinite` }} />
-              ))}
+              {[0, 1, 2].map((i) => <div key={i} className="w-1.5 h-1.5 rounded-full" style={{ background: trainerColor, animation: `pulse3 1s ${i * 0.2}s infinite` }} />)}
             </div>
           </div>
         )}
@@ -232,16 +221,13 @@ export default function TrainerTab() {
       <div className="flex flex-wrap gap-[5px]">
         {(t.trainer.suggestions as string[]).map((s) => (
           <button key={s} onClick={() => handleSend(s)}
-            className="bg-white/[0.04] border border-fit-border rounded-2xl py-[5px] px-3 text-fit-muted text-[10px] font-bold cursor-pointer font-outfit hover:text-fit-accent transition-colors">
-            {s}
-          </button>
+            className="bg-white/[0.04] border border-fit-border rounded-2xl py-[5px] px-3 text-fit-muted text-[10px] font-bold cursor-pointer font-outfit hover:text-fit-accent transition-colors">{s}</button>
         ))}
       </div>
 
       {/* Input */}
       <div className="flex gap-2">
-        <input value={input} onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend(input)}
+        <input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend(input)}
           placeholder={t.trainer.placeholder}
           className="flex-1 bg-white/[0.04] border border-fit-border rounded-2xl py-3 px-4 text-fit-text text-[13px] outline-none font-outfit focus:border-fit-accent/30 transition-colors" />
         <button onClick={() => handleSend(input)}
