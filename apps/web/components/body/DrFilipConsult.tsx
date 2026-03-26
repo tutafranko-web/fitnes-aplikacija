@@ -6,6 +6,7 @@ import Box from '@/components/ui/Box';
 import Lbl from '@/components/ui/Lbl';
 import DrFilip from './DrFilip';
 import { findDiagnosis, buildKnowledgePrompt, type PhysioDiagnosis } from '@/lib/constants/physioKnowledge';
+import { useDrFilipChat } from '@/lib/globalStore';
 
 type Mood = 'idle' | 'thinking' | 'talking' | 'happy' | 'concerned';
 
@@ -15,7 +16,7 @@ export default function DrFilipConsult({ soreness }: { soreness: Record<string, 
   const [mood, setMood] = useState<Mood>('idle');
   const [isTalking, setIsTalking] = useState(false);
   const [message, setMessage] = useState('');
-  const [chatMsgs, setChatMsgs] = useState<{ role: string; text: string }[]>([]);
+  const { msgs: chatMsgs, addMsg: addChatMsg, setMsgs: setChatMsgs } = useDrFilipChat();
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -47,7 +48,7 @@ export default function DrFilipConsult({ soreness }: { soreness: Record<string, 
   const handleSend = async (text: string) => {
     if (!text?.trim()) return;
     const userMsg = { role: 'user', text };
-    setChatMsgs((p) => [...p, userMsg]);
+    addChatMsg(userMsg);
     setInput('');
     setTyping(true);
     setMood('thinking');
@@ -60,7 +61,7 @@ export default function DrFilipConsult({ soreness }: { soreness: Record<string, 
       setIsTalking(true);
       const lang = hr ? 'hr' : 'en';
       const offlineResponse = buildOfflineResponse(localDiag, lang);
-      setChatMsgs((p) => [...p, { role: 'ai', text: offlineResponse }]);
+      addChatMsg( { role: 'ai', text: offlineResponse });
       setMessage(hr ? `Imam podatke o ${localDiag.name.hr}!` : `I have data on ${localDiag.name.en}!`);
       setTimeout(() => { setIsTalking(false); setMood('happy'); }, 3000);
       return;
@@ -143,13 +144,13 @@ ${buildKnowledgePrompt('en')}`;
       setTyping(false);
       setMood('talking');
       setIsTalking(true);
-      setChatMsgs((p) => [...p, { role: 'ai', text: data.text }]);
+      addChatMsg( { role: 'ai', text: data.text });
       setMessage(data.text.substring(0, 80) + (data.text.length > 80 ? '...' : ''));
       setTimeout(() => { setIsTalking(false); setMood('idle'); }, 3000);
     } catch {
       setTyping(false);
       setMood('concerned');
-      setChatMsgs((p) => [...p, { role: 'ai', text: hr ? 'Greška u komunikaciji. Pokušaj ponovno.' : 'Communication error. Try again.' }]);
+      addChatMsg( { role: 'ai', text: hr ? 'Greška u komunikaciji. Pokušaj ponovno.' : 'Communication error. Try again.' });
     }
   };
 

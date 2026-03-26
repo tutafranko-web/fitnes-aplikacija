@@ -43,14 +43,20 @@ export default function HomeTab() {
     setAiCost(getTotalAiCost());
   }, []);
 
-  // Step counter
+  const [showStepInput, setShowStepInput] = useState(false);
+  const [stepInput, setStepInput] = useState('');
+
+  // Step counter — DeviceMotionEvent on mobile, manual input on desktop
   useEffect(() => {
     let stepCount = steps;
     let lastAccel = 0;
     let lastTime = Date.now();
+    let hasMotion = false;
+
     const handleMotion = (e: DeviceMotionEvent) => {
       const acc = e.accelerationIncludingGravity;
       if (!acc || acc.x === null) return;
+      hasMotion = true;
       const total = Math.sqrt((acc.x || 0) ** 2 + (acc.y || 0) ** 2 + (acc.z || 0) ** 2);
       const now = Date.now();
       if (now - lastTime < 300) return;
@@ -63,11 +69,22 @@ export default function HomeTab() {
       lastAccel = total;
       lastTime = now;
     };
+
     if (typeof window !== 'undefined' && 'DeviceMotionEvent' in window) {
       window.addEventListener('devicemotion', handleMotion);
+      // Check after 2s if motion events are firing
+      setTimeout(() => { if (!hasMotion) setShowStepInput(true); }, 2000);
+    } else {
+      setShowStepInput(true);
     }
     return () => window.removeEventListener('devicemotion', handleMotion);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleManualSteps = () => {
+    const s = parseInt(stepInput);
+    if (s > 0) { setSteps(s); logSteps(s); setStepInput(''); }
+  };
 
   // Reminders
   useEffect(() => {
@@ -140,6 +157,14 @@ export default function HomeTab() {
           <div className="text-[9px] text-fit-dim font-bold">👣 {t.home.steps}</div>
           <div className="text-[22px] font-black text-fit-accent">{steps.toLocaleString()}</div>
           <Bar pct={(steps / 10000) * 100} color="#00f0b5" />
+          {showStepInput && (
+            <div className="flex gap-1 mt-1.5">
+              <input type="number" value={stepInput} onChange={(e) => setStepInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleManualSteps()}
+                placeholder={hr ? 'Unesi korake' : 'Enter steps'}
+                className="flex-1 bg-white/[0.04] border border-fit-border rounded-lg py-1 px-2 text-fit-text text-[10px] outline-none" />
+              <button onClick={handleManualSteps} className="text-[10px] px-2 py-1 rounded-lg bg-fit-accent/20 text-fit-accent font-bold cursor-pointer border-none">+</button>
+            </div>
+          )}
         </Box>
         <Box>
           <div className="text-[9px] text-fit-dim font-bold">🔥 {t.home.calories}</div>

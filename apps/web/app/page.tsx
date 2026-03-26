@@ -91,14 +91,15 @@ export default function App() {
         </button>
       </div>
 
+      {/* Keep ALL tabs mounted so state persists across switches */}
       <div className="relative z-[1] px-3.5 pb-4">
-        {tab === 'home' && <HomeTab />}
-        {tab === 'trainer' && <TrainerTab />}
-        {tab === 'body' && <BodyTab />}
-        {tab === 'nutrition' && <NutritionTab />}
-        {tab === 'training' && <TrainingTab />}
-        {tab === 'social' && <SocialTab />}
-        {tab === 'settings' && <SettingsTab onResetOnboarding={resetOnboarding} />}
+        <div style={{ display: tab === 'home' ? 'block' : 'none' }}><HomeTab /></div>
+        <div style={{ display: tab === 'trainer' ? 'block' : 'none' }}><TrainerTab /></div>
+        <div style={{ display: tab === 'body' ? 'block' : 'none' }}><BodyTab /></div>
+        <div style={{ display: tab === 'nutrition' ? 'block' : 'none' }}><NutritionTab /></div>
+        <div style={{ display: tab === 'training' ? 'block' : 'none' }}><TrainingTab /></div>
+        <div style={{ display: tab === 'social' ? 'block' : 'none' }}><SocialTab /></div>
+        <div style={{ display: tab === 'settings' ? 'block' : 'none' }}><SettingsTab onResetOnboarding={resetOnboarding} /></div>
       </div>
 
       <BottomTabBar activeTab={tab} onTabChange={setTab} />

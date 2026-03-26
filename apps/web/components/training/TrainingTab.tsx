@@ -127,9 +127,10 @@ export default function TrainingTab() {
     setRestTimer(exs[idx].rest);
   };
 
-  const [genStep, setGenStep] = useState(0); // 0=hidden, 1=questions, 2=generating, 3=done
-  const [genOpts, setGenOpts] = useState({ focus: '', duration: '30', intensity: 'medium', equipment: 'full_gym' });
+  const [genStep, setGenStep] = useState(0);
+  const [genOpts, setGenOpts] = useState({ focus: [] as string[], duration: '30', intensity: 'medium' });
   const [generatedWorkout, setGeneratedWorkout] = useState<Workout | null>(null);
+  const [customExercise, setCustomExercise] = useState({ name: '', sets: '3', reps: '10', weight: '' });
 
   const generateWorkout = async () => {
     if (genStep === 0) { setGenStep(1); return; }
@@ -146,7 +147,7 @@ export default function TrainingTab() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Generiraj trening. Fokus: ${genOpts.focus || 'full body'}. Trajanje: ${genOpts.duration} min. Intenzitet: ${genOpts.intensity}. Oprema: ${genOpts.equipment}. Ozljede: ${prof.injuries?.join(', ') || 'nema'}. Razina: ${prof.level || 'mid'}. Cilj: ${prof.goal || 'gain'}.
+          message: `Generiraj trening. Fokus: ${genOpts.focus.join(', ') || 'full body'}. Trajanje: ${genOpts.duration} min. Intenzitet: ${genOpts.intensity}. Oprema: ${prof.equipment?.join(', ') || 'full gym'}. Ozljede: ${prof.injuries?.join(', ') || 'nema'}. Razina: ${prof.level || 'mid'}. Cilj: ${prof.goal || 'gain'}.
 
 ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
 {"name":"Naziv treninga","duration":${genOpts.duration},"calories":300,"muscles":["Prsa","Triceps"],"exercises":[{"name":"Bench Press","sets":4,"reps":"8","weight":"80kg","rest":90,"done":false},{"name":"Incline DB Press","sets":3,"reps":"12","weight":"30kg","rest":75,"done":false}]}`,
@@ -176,14 +177,14 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
 
       // Fallback if JSON parsing failed
       if (!workout || workout.exercises.length === 0) {
-        workout = generateFallbackWorkout(genOpts, prof);
+        workout = generateFallbackWorkout({ ...genOpts, focus: genOpts.focus[0] || 'full_body' }, prof);
       }
 
       setGeneratedWorkout(workout);
       setGenerating(false);
       setGenStep(3);
     } catch {
-      setGeneratedWorkout(generateFallbackWorkout(genOpts, prof));
+      setGeneratedWorkout(generateFallbackWorkout({ ...genOpts, focus: genOpts.focus[0] || 'full_body' }, prof));
       setGenerating(false);
       setGenStep(3);
     }
@@ -275,6 +276,35 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
             </div>
           </div>
         ))}
+
+        {/* Add custom exercise */}
+        <div className="mt-2 p-3 rounded-xl bg-white/[0.02] border border-dashed border-fit-border">
+          <div className="text-[10px] text-fit-dim font-bold mb-2">+ {hr ? 'Dodaj vježbu' : 'Add exercise'}</div>
+          <div className="flex gap-1 flex-wrap">
+            <input value={customExercise.name} onChange={(e) => setCustomExercise(c => ({ ...c, name: e.target.value }))}
+              placeholder={hr ? 'Naziv vježbe' : 'Exercise name'}
+              className="flex-1 min-w-[120px] bg-white/[0.04] border border-fit-border rounded-lg py-1.5 px-2 text-fit-text text-[10px] outline-none" />
+            <input value={customExercise.sets} onChange={(e) => setCustomExercise(c => ({ ...c, sets: e.target.value }))}
+              placeholder="Sets" className="w-12 bg-white/[0.04] border border-fit-border rounded-lg py-1.5 px-2 text-fit-text text-[10px] outline-none text-center" />
+            <input value={customExercise.reps} onChange={(e) => setCustomExercise(c => ({ ...c, reps: e.target.value }))}
+              placeholder="Reps" className="w-12 bg-white/[0.04] border border-fit-border rounded-lg py-1.5 px-2 text-fit-text text-[10px] outline-none text-center" />
+            <input value={customExercise.weight} onChange={(e) => setCustomExercise(c => ({ ...c, weight: e.target.value }))}
+              placeholder="kg" className="w-14 bg-white/[0.04] border border-fit-border rounded-lg py-1.5 px-2 text-fit-text text-[10px] outline-none text-center" />
+            <button onClick={() => {
+              if (!customExercise.name.trim() || !activeWorkout) return;
+              setActiveWorkout({
+                ...activeWorkout,
+                exercises: [...activeWorkout.exercises, {
+                  name: customExercise.name, sets: parseInt(customExercise.sets) || 3,
+                  reps: customExercise.reps || '10', weight: customExercise.weight || undefined,
+                  rest: 60, done: false,
+                }]
+              });
+              setCustomExercise({ name: '', sets: '3', reps: '10', weight: '' });
+            }}
+              className="py-1.5 px-3 rounded-lg text-[10px] font-bold cursor-pointer border-none bg-fit-accent/20 text-fit-accent">+</button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -296,22 +326,28 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
         {genStep === 1 && (
           <div className="mt-3 flex flex-col gap-3 animate-[fadeIn_0.3s_ease]">
             <div>
-              <div className="text-[10px] text-fit-dim font-bold mb-1">{hr ? 'FOKUS TRENINGA' : 'WORKOUT FOCUS'}</div>
+              <div className="text-[10px] text-fit-dim font-bold mb-1">{hr ? 'FOKUS TRENINGA (odaberi više)' : 'WORKOUT FOCUS (select multiple)'}</div>
               <div className="grid grid-cols-4 gap-1">
                 {[
                   { id: 'chest', l: hr ? 'Prsa' : 'Chest' }, { id: 'back', l: hr ? 'Leđa' : 'Back' },
                   { id: 'legs', l: hr ? 'Noge' : 'Legs' }, { id: 'shoulders', l: hr ? 'Ramena' : 'Shoulders' },
                   { id: 'arms', l: hr ? 'Ruke' : 'Arms' }, { id: 'core', l: 'Core' },
                   { id: 'full_body', l: 'Full Body' }, { id: 'hiit', l: 'HIIT' },
-                ].map((f) => (
-                  <button key={f.id} onClick={() => setGenOpts((o) => ({ ...o, focus: f.id }))}
-                    className="py-2 rounded-xl text-[10px] font-bold cursor-pointer border transition-colors"
-                    style={{
-                      background: genOpts.focus === f.id ? '#7c5cfc20' : 'rgba(255,255,255,0.03)',
-                      borderColor: genOpts.focus === f.id ? '#7c5cfc55' : 'rgba(255,255,255,0.06)',
-                      color: genOpts.focus === f.id ? '#7c5cfc' : '#8b8fa3',
-                    }}>{f.l}</button>
-                ))}
+                ].map((f) => {
+                  const selected = genOpts.focus.includes(f.id);
+                  return (
+                    <button key={f.id} onClick={() => setGenOpts((o) => ({
+                      ...o,
+                      focus: selected ? o.focus.filter((x) => x !== f.id) : [...o.focus.filter((x) => x !== 'full_body'), f.id]
+                    }))}
+                      className="py-2 rounded-xl text-[10px] font-bold cursor-pointer border transition-colors"
+                      style={{
+                        background: selected ? '#7c5cfc20' : 'rgba(255,255,255,0.03)',
+                        borderColor: selected ? '#7c5cfc55' : 'rgba(255,255,255,0.06)',
+                        color: selected ? '#7c5cfc' : '#8b8fa3',
+                      }}>{selected ? '✓ ' : ''}{f.l}</button>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -350,9 +386,9 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
               <button onClick={() => setGenStep(0)} className="py-3 px-4 rounded-xl text-xs font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
                 ← {hr ? 'Natrag' : 'Back'}
               </button>
-              <button onClick={generateWorkout} disabled={!genOpts.focus}
+              <button onClick={generateWorkout} disabled={genOpts.focus.length === 0}
                 className="flex-1 py-3 rounded-xl text-sm font-black cursor-pointer border-none transition-all"
-                style={{ background: genOpts.focus ? 'linear-gradient(135deg, #7c5cfc, #ff4d8d)' : 'rgba(255,255,255,0.04)', color: genOpts.focus ? '#fff' : '#4a4e62' }}>
+                style={{ background: genOpts.focus.length > 0 ? 'linear-gradient(135deg, #7c5cfc, #ff4d8d)' : 'rgba(255,255,255,0.04)', color: genOpts.focus.length > 0 ? '#fff' : '#4a4e62' }}>
                 🤖 {hr ? 'Generiraj!' : 'Generate!'}
               </button>
             </div>
@@ -408,7 +444,7 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
                   className="py-2 px-3 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
                   ❌ {hr ? 'Ne hvala' : 'No thanks'}
                 </button>
-                <button onClick={() => { setSuggestion(''); setGenOpts(o => ({ ...o, focus: '' })); setGenStep(1); }}
+                <button onClick={() => { setSuggestion(''); setGenOpts(o => ({ ...o, focus: [] })); setGenStep(1); }}
                   className="py-2 px-3 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
                   🔄 {hr ? 'Drugi prijedlog' : 'Different'}
                 </button>
@@ -441,7 +477,7 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
               const prog = sportPrograms[sport];
               if (!prog) return null;
               return (
-                <button key={sport} onClick={() => { setGenOpts(o => ({ ...o, focus: sport === 'running' ? 'hiit' : sport === 'gym' ? 'full_body' : 'full_body' })); setGenStep(1); }}
+                <button key={sport} onClick={() => { setGenOpts(o => ({ ...o, focus: [sport === 'running' ? 'legs' : sport === 'mma' ? 'full_body' : sport] })); setGenStep(1); }}
                   className="py-2.5 px-3 rounded-xl text-left cursor-pointer border border-fit-border/50 bg-white/[0.02] hover:border-fit-accent/30 transition-colors">
                   <div className="text-xs font-bold text-fit-text">{prog.name}</div>
                   <div className="text-[9px] text-fit-muted mt-0.5">{prog.exercises}</div>

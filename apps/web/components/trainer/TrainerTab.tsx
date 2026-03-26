@@ -7,6 +7,7 @@ import { useVoice } from '@/hooks/useVoice';
 import Box from '@/components/ui/Box';
 import { trainers, type Trainer } from '@/lib/constants/trainers';
 import TrainerAvatar from './TrainerAvatar';
+import { useTrainerChat } from '@/lib/globalStore';
 
 export default function TrainerTab() {
   const t = useT();
@@ -14,7 +15,7 @@ export default function TrainerTab() {
   const hr = locale === 'hr';
   const [trainer, setTrainer] = useState<Trainer | null>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [msgs, setMsgs] = useState<{ role: string; text: string }[]>([]);
+  const { msgs, addMsg, setMsgs } = useTrainerChat();
   const [input, setInput] = useState('');
   const [typing, setTyping] = useState(false);
   const [mode, setMode] = useState<'chat' | 'voice'>('chat');
@@ -22,24 +23,25 @@ export default function TrainerTab() {
   const chatRef = useRef<HTMLDivElement>(null);
   const voice = useVoice();
 
-  // Load trainer and profile
+  // Load trainer and profile — only set greeting if no msgs yet
   useEffect(() => {
     try {
       const p = JSON.parse(localStorage.getItem('fit-profile') || '{}');
       setProfile(p);
       if (p.trainerId) {
         const tr = trainers.find((t) => t.id === p.trainerId);
-        if (tr) {
-          setTrainer(tr);
-          setMsgs([{ role: 'ai', text: hr ? tr.greeting.hr : tr.greeting.en }]);
-        }
+        if (tr) setTrainer(tr);
       }
     } catch {}
-    if (msgs.length === 0) {
-      setMsgs([{ role: 'ai', text: t.trainer.greeting }]);
+  }, []);
+
+  // Set greeting only once
+  useEffect(() => {
+    if (msgs.length === 0 && trainer) {
+      setMsgs([{ role: 'ai', text: hr ? trainer.greeting.hr : trainer.greeting.en }]);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [trainer]);
 
   // Update avatar mood
   useEffect(() => {
@@ -51,8 +53,7 @@ export default function TrainerTab() {
 
   const handleSend = useCallback(async (text: string) => {
     if (!text?.trim()) return;
-    const userMsg = { role: 'user', text };
-    setMsgs((p) => [...p, userMsg]);
+    addMsg({ role: 'user', text });
     setInput('');
     setTyping(true);
 
@@ -73,19 +74,15 @@ export default function TrainerTab() {
       const data = await res.json();
       setTyping(false);
       setAvatarMood('excited');
-      setMsgs((p) => [...p, { role: 'ai', text: data.text }]);
+      addMsg({ role: 'ai', text: data.text });
       if (mode === 'voice') voice.speak(data.text);
       setTimeout(() => setAvatarMood('idle'), 3000);
     } catch (err) {
       setTyping(false);
       setAvatarMood('idle');
-      // Fallback local response
-      const fallback = hr
-        ? 'Tu sam za tebe! 💪 Pitaj me za trening, prehranu ili oporavak.'
-        : "I'm here for you! 💪 Ask me about training, nutrition or recovery.";
-      setMsgs((p) => [...p, { role: 'ai', text: fallback }]);
+      addMsg({ role: 'ai', text: hr ? 'Tu sam za tebe! 💪 Pitaj me za trening, prehranu ili oporavak.' : "I'm here for you! 💪 Ask me about training, nutrition or recovery." });
     }
-  }, [msgs, locale, profile, trainer, hr, mode, voice]);
+  }, [msgs, locale, profile, trainer, hr, mode, voice, addMsg]);
 
   // Auto-send on voice end
   useEffect(() => {
