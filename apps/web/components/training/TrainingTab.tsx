@@ -6,6 +6,7 @@ import { useLocaleStore } from '@/hooks/useLocale';
 import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
+import { logWorkout } from '@/lib/dataStore';
 
 interface Exercise {
   name: string;
@@ -34,7 +35,13 @@ export default function TrainingTab() {
   const [timerRunning, setTimerRunning] = useState(false);
   const [restTimer, setRestTimer] = useState(0);
   const [generating, setGenerating] = useState(false);
+  const [suggestion, setSuggestion] = useState('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [profile, setProfile] = useState<any>(null);
+
+  useEffect(() => {
+    try { setProfile(JSON.parse(localStorage.getItem('fit-profile') || '{}')); } catch {}
+  }, []);
 
   const sampleWorkouts: Workout[] = [
     {
@@ -212,10 +219,19 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
               {timerRunning ? '⏸ Pause' : '▶ Resume'}
             </button>
             <button
-              onClick={() => { setActiveWorkout(null); setTimerRunning(false); setTimer(0); }}
+              onClick={() => {
+                // Log workout + auto-calculate soreness
+                if (activeWorkout) {
+                  const doneExercises = activeWorkout.exercises.filter(e => e.done).map(e => e.name);
+                  if (doneExercises.length > 0) logWorkout(doneExercises);
+                }
+                // Show suggestion for next workout
+                setSuggestion(hr ? '💡 Odličan trening! Sutra preporučujem Pull dan (leđa + biceps) za balansiran program.' : "💡 Great workout! Tomorrow I recommend a Pull day (back + biceps) for a balanced program.");
+                setActiveWorkout(null); setTimerRunning(false); setTimer(0);
+              }}
               className="py-2 px-4 rounded-xl text-xs font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted"
             >
-              ✕ {locale === 'hr' ? 'Završi' : 'Finish'}
+              ✅ {hr ? 'Završi' : 'Finish'}
             </button>
           </div>
         </Box>
@@ -374,6 +390,67 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
           </div>
         )}
       </Box>
+
+      {/* Workout Suggestion (approve/reject) */}
+      {suggestion && (
+        <Box glow="#ffc233">
+          <div className="flex items-start gap-2">
+            <span className="text-xl">🤖</span>
+            <div className="flex-1">
+              <div className="text-xs text-fit-text leading-relaxed">{suggestion}</div>
+              <div className="flex gap-2 mt-2">
+                <button onClick={() => { setSuggestion(''); setGenStep(1); }}
+                  className="py-2 px-4 rounded-xl text-[10px] font-bold cursor-pointer border-none"
+                  style={{ background: 'linear-gradient(135deg, #00f0b5, #3ea8ff)', color: '#000' }}>
+                  ✅ {hr ? 'Prihvaćam!' : 'Accept!'}
+                </button>
+                <button onClick={() => setSuggestion('')}
+                  className="py-2 px-3 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
+                  ❌ {hr ? 'Ne hvala' : 'No thanks'}
+                </button>
+                <button onClick={() => { setSuggestion(''); setGenOpts(o => ({ ...o, focus: '' })); setGenStep(1); }}
+                  className="py-2 px-3 rounded-xl text-[10px] font-bold cursor-pointer bg-white/[0.04] border border-fit-border text-fit-muted">
+                  🔄 {hr ? 'Drugi prijedlog' : 'Different'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Box>
+      )}
+
+      {/* Sport-Specific Programs */}
+      {profile?.sports?.length > 0 && (
+        <Box>
+          <Lbl icon="⚽" text={hr ? 'Sport-specifični programi' : 'Sport-specific programs'} />
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {(profile.sports as string[]).slice(0, 6).map((sport: string) => {
+              const sportPrograms: Record<string, { name: string; exercises: string }> = {
+                football: { name: hr ? '⚽ Nogomet' : '⚽ Football', exercises: hr ? 'Agilnost, sprint, core stability' : 'Agility, sprint, core stability' },
+                basketball: { name: hr ? '🏀 Košarka' : '🏀 Basketball', exercises: hr ? 'Vertikalni skok, lateralni pokreti' : 'Vertical jump, lateral movement' },
+                mma: { name: '🥊 MMA', exercises: hr ? 'Udaračka snaga, core, izdržljivost' : 'Striking power, core, endurance' },
+                swimming: { name: hr ? '🏊 Plivanje' : '🏊 Swimming', exercises: hr ? 'Ramena, leđa, core rotacija' : 'Shoulders, back, core rotation' },
+                running: { name: hr ? '🏃 Trčanje' : '🏃 Running', exercises: hr ? 'Noge, core, mobilnost' : 'Legs, core, mobility' },
+                yoga: { name: '🧘 Yoga', exercises: hr ? 'Fleksibilnost, balans, disanje' : 'Flexibility, balance, breathing' },
+                cycling: { name: hr ? '🚴 Biciklizam' : '🚴 Cycling', exercises: hr ? 'Quadriceps, hamstrings, core' : 'Quads, hamstrings, core' },
+                tennis: { name: '🎾 Tenis', exercises: hr ? 'Rotacija, agilnost, podlaktice' : 'Rotation, agility, forearms' },
+                gym: { name: hr ? '🏋️ Teretana' : '🏋️ Gym', exercises: hr ? 'Compound pokreti, izolacija' : 'Compound moves, isolation' },
+                crossfit: { name: '🔗 CrossFit', exercises: hr ? 'Funkcionalni, WOD, Olympic lifts' : 'Functional, WOD, Olympic lifts' },
+                calisthenics: { name: '🤸 Kalisthenika', exercises: hr ? 'Bodyweight, skills, progresije' : 'Bodyweight, skills, progressions' },
+                hiking: { name: hr ? '🥾 Planinarenje' : '🥾 Hiking', exercises: hr ? 'Noge, izdržljivost, core' : 'Legs, endurance, core' },
+              };
+              const prog = sportPrograms[sport];
+              if (!prog) return null;
+              return (
+                <button key={sport} onClick={() => { setGenOpts(o => ({ ...o, focus: sport === 'running' ? 'hiit' : sport === 'gym' ? 'full_body' : 'full_body' })); setGenStep(1); }}
+                  className="py-2.5 px-3 rounded-xl text-left cursor-pointer border border-fit-border/50 bg-white/[0.02] hover:border-fit-accent/30 transition-colors">
+                  <div className="text-xs font-bold text-fit-text">{prog.name}</div>
+                  <div className="text-[9px] text-fit-muted mt-0.5">{prog.exercises}</div>
+                </button>
+              );
+            })}
+          </div>
+        </Box>
+      )}
 
       {/* Workout List */}
       <Lbl icon="🏋️" text={locale === 'hr' ? 'Treninzi' : 'Workouts'} />

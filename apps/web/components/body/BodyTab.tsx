@@ -28,25 +28,55 @@ export default function BodyTab() {
   } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
-    if (f) {
-      setBodyPhoto(URL.createObjectURL(f));
-      setAnalyzing(true);
-      // Mock AI analysis (will be replaced with Gemini Vision)
-      setTimeout(() => {
-        setAnalyzing(false);
-        setBodyStats({
-          bodyFat: 14.8, muscleMass: 39.2, fitLevel: locale === 'hr' ? 'Napredni' : 'Advanced',
-          score: 82, bmi: 24.1,
-          weak: locale === 'hr'
-            ? ['Ramena — asimetrija', 'Leđa — gornji dio slabiji']
-            : ['Shoulders — asymmetry', 'Back — upper part weaker'],
-          strong: locale === 'hr'
-            ? ['Noge — odlična definicija', 'Prsa — dobra proporcija', 'Trbuh — vidljivi abs']
-            : ['Legs — excellent definition', 'Chest — good proportion', 'Abs — visible'],
-        });
-      }, 3000);
+    if (!f) return;
+    setBodyPhoto(URL.createObjectURL(f));
+    setAnalyzing(true);
+
+    // Load profile for context
+    let profile: any = {};
+    try { profile = JSON.parse(localStorage.getItem('fit-profile') || '{}'); } catch {}
+
+    try {
+      const formData = new FormData();
+      formData.append('photo', f);
+      formData.append('weight', profile.weight || '75');
+      formData.append('height', profile.height || '175');
+      formData.append('age', profile.age || '25');
+      formData.append('gender', profile.gender || 'male');
+      formData.append('locale', locale);
+
+      const res = await fetch('/api/ai/body-analysis', { method: 'POST', body: formData });
+      const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+
+      setAnalyzing(false);
+      setBodyStats({
+        bodyFat: data.bodyFat || 20,
+        muscleMass: data.muscleMass || 30,
+        fitLevel: data.fitLevel || 'Srednji',
+        score: data.score || 50,
+        bmi: data.bmi || 24,
+        weak: data.weak || [],
+        strong: data.strong || [],
+      });
+    } catch (err) {
+      // Fallback to calculated estimate
+      setAnalyzing(false);
+      const w = parseFloat(profile.weight) || 75;
+      const h = parseFloat(profile.height) || 175;
+      const bmi = Math.round((w / ((h / 100) ** 2)) * 10) / 10;
+      setBodyStats({
+        bodyFat: bmi > 25 ? 22 : bmi > 22 ? 16 : 12,
+        muscleMass: Math.round(w * 0.42),
+        fitLevel: bmi > 25 ? (locale === 'hr' ? 'Početnik' : 'Beginner') : (locale === 'hr' ? 'Srednji' : 'Intermediate'),
+        score: Math.max(30, Math.min(90, 100 - Math.abs(bmi - 22) * 5)),
+        bmi,
+        weak: locale === 'hr' ? ['Potrebna AI analiza za detaljne rezultate'] : ['Need AI analysis for detailed results'],
+        strong: locale === 'hr' ? ['BMI izračunat iz podataka'] : ['BMI calculated from data'],
+      });
     }
   };
 
