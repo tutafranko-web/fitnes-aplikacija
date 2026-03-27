@@ -537,20 +537,27 @@ export const exercises: ExerciseInfo[] = [
 // FILTER FUNCTIONS
 // ==========================================
 
-// Lazy-loaded extended exercises (merged on first call)
+// Lazy-loaded all exercises (merged on first call)
 let _allExercisesCache: ExerciseInfo[] | null = null;
 
 export function getAllExercises(): ExerciseInfo[] {
   if (_allExercisesCache) return _allExercisesCache;
+  const existingIds = new Set(exercises.map((e) => e.id));
+  const all: ExerciseInfo[] = [...exercises];
+
+  // Merge extended exercises (our custom 232)
   try {
-    // Dynamic import would be ideal but for sync access, we import at build time
     const ext = require('./exerciseDB_extended').extendedExercises as ExerciseCompact[];
-    const existingIds = new Set(exercises.map((e) => e.id));
-    const deduped = ext.filter((e) => !existingIds.has(e.id));
-    _allExercisesCache = [...exercises, ...deduped as any[]];
-  } catch {
-    _allExercisesCache = [...exercises];
-  }
+    ext.filter((e) => !existingIds.has(e.id)).forEach((e) => { existingIds.add(e.id); all.push(e as any); });
+  } catch {}
+
+  // Merge free-exercise-db (873 with images)
+  try {
+    const free = require('./freeExerciseDB').freeExercises as any[];
+    free.filter((e: any) => !existingIds.has(e.id)).forEach((e: any) => { existingIds.add(e.id); all.push(e as any); });
+  } catch {}
+
+  _allExercisesCache = all;
   return _allExercisesCache;
 }
 

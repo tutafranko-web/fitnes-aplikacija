@@ -308,22 +308,34 @@ Koristi ISKLJUČIVO ove exercise ID-ove: ${exercises.map(e => e.id).join(',')}`,
 
             {/* Exercise list */}
             <div className="overflow-auto px-4 pb-6" style={{ maxHeight: '50vh' }}>
-              {filteredExercises.map((ex) => (
-                <div key={ex.id} className="flex items-center gap-2 py-2.5 px-3 rounded-xl mb-1 bg-white/[0.02] border border-fit-border/30 cursor-pointer hover:border-fit-accent/30 transition-colors"
-                  onClick={() => addExerciseToPlan(ex)}>
-                  <div className="flex-1">
-                    <div className="text-xs font-bold text-fit-text">{hr ? ex.nameHr : ex.name}</div>
-                    <div className="flex gap-1 mt-0.5">
-                      {ex.primary.map((m) => (
-                        <span key={m} className="text-[7px] py-0.5 px-1 rounded-full bg-fit-accent/10 text-fit-accent">{hr ? muscleGroupLabels[m].hr : muscleGroupLabels[m].en}</span>
-                      ))}
-                      <span className="text-[7px] text-fit-dim">{ex.defaultSets}×{ex.defaultReps}</span>
+              {filteredExercises.map((ex) => {
+                const imgs = (ex as any).images as string[] | undefined;
+                return (
+                  <div key={ex.id} className="flex items-center gap-2 py-2 px-2 rounded-xl mb-1 bg-white/[0.02] border border-fit-border/30 cursor-pointer hover:border-fit-accent/30 transition-colors"
+                    onClick={() => addExerciseToPlan(ex)}>
+                    {/* Thumbnail */}
+                    {imgs && imgs[0] ? (
+                      <div className="w-12 h-12 rounded-lg bg-white overflow-hidden shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={imgs[0]} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-white/[0.04] flex items-center justify-center text-lg shrink-0">🏋️</div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[11px] font-bold text-fit-text truncate">{hr ? ex.nameHr : ex.name}</div>
+                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                        {(ex.primary as string[]).slice(0, 2).map((m) => (
+                          <span key={m} className="text-[7px] py-0.5 px-1 rounded-full bg-fit-accent/10 text-fit-accent">{muscleGroupLabels[m as keyof typeof muscleGroupLabels]?.[hr ? 'hr' : 'en'] || m}</span>
+                        ))}
+                        <span className="text-[7px] text-fit-dim">{ex.defaultSets}×{ex.defaultReps}</span>
+                      </div>
                     </div>
+                    <button onClick={(e) => { e.stopPropagation(); setShowDemo(ex); }} className="text-[10px] text-fit-blue cursor-pointer bg-transparent border-none">📹</button>
+                    <span className="text-fit-accent text-lg">+</span>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); setShowDemo(ex); }} className="text-[10px] text-fit-blue cursor-pointer bg-transparent border-none">📹</button>
-                  <span className="text-fit-accent text-lg">+</span>
-                </div>
-              ))}
+                );
+              })}
               {filteredExercises.length === 0 && (
                 <div className="text-center py-6 text-fit-dim text-xs">{hr ? 'Nema rezultata' : 'No results'}</div>
               )}
