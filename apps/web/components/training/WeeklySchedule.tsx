@@ -5,7 +5,7 @@ import { useLocaleStore } from '@/hooks/useLocale';
 import Box from '@/components/ui/Box';
 import Lbl from '@/components/ui/Lbl';
 import ExerciseDemo from './ExerciseDemo';
-import { exercises, filterExercises, muscleGroupLabels, equipmentLabels, type ExerciseInfo, type MuscleGroup, type Equipment, type Difficulty } from '@/lib/constants/exerciseDB';
+import { getAllExercises, filterExercises, getExerciseById, muscleGroupLabels, equipmentLabels, type ExerciseInfo, type MuscleGroup, type Equipment, type Difficulty } from '@/lib/constants/exerciseDB';
 
 interface ScheduleExercise {
   exerciseId: string;
@@ -107,7 +107,7 @@ export default function WeeklySchedule() {
 ODGOVORI U JSON FORMATU:
 {"mon":{"name":"Push","exercises":["bench_press","incline_db_press","cable_fly","lateral_raise","tricep_pushdown"]},"tue":{"name":"Pull","exercises":["pullup","barbell_row","face_pull","barbell_curl","hammer_curl"]},"wed":{"name":"Legs","exercises":["squat","rdl","leg_press","leg_curl","calf_raise"]},"thu":{"name":"Rest","exercises":[]},"fri":{"name":"Upper","exercises":["bench_press","barbell_row","ohp","barbell_curl","tricep_pushdown"]},"sat":{"name":"Lower+Core","exercises":["squat","hip_thrust","lunge","plank","russian_twist"]},"sun":{"name":"Rest","exercises":[]}}
 
-Koristi ISKLJUČIVO ove exercise ID-ove: ${exercises.map(e => e.id).join(',')}`,
+Koristi ISKLJUČIVO ove exercise ID-ove: ${getAllExercises().slice(0, 200).map(e => e.id).join(',')}`,
           history: [], locale, trainerPrompt: 'Ti si fitness AI. Odgovori SAMO JSON.',
         }),
       });
@@ -121,7 +121,7 @@ Koristi ISKLJUČIVO ove exercise ID-ove: ${exercises.map(e => e.id).join(',')}`,
           if (dayData && dayData.exercises) {
             const exs: ScheduleExercise[] = dayData.exercises
               .map((id: string) => {
-                const ex = exercises.find((e) => e.id === id);
+                const ex = getExerciseById(id);
                 if (!ex) return null;
                 return { exerciseId: ex.id, name: hr ? ex.nameHr : ex.name, sets: ex.defaultSets, reps: ex.defaultReps, rest: ex.defaultRest, done: false };
               })
@@ -137,12 +137,12 @@ Koristi ISKLJUČIVO ove exercise ID-ove: ${exercises.map(e => e.id).join(',')}`,
     // Fallback — use preset plan
     if (!plan.mon.exercises.length) {
       const preset: WeekPlan = {
-        mon: { name: 'Push', restDay: false, exercises: ['bench_press', 'incline_db_press', 'cable_fly', 'lateral_raise', 'tricep_pushdown', 'overhead_ext'].map((id) => { const e = exercises.find((x) => x.id === id)!; return { exerciseId: id, name: hr ? e.nameHr : e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
-        tue: { name: 'Pull', restDay: false, exercises: ['pullup', 'barbell_row', 'lat_pulldown', 'face_pull', 'barbell_curl', 'hammer_curl'].map((id) => { const e = exercises.find((x) => x.id === id)!; return { exerciseId: id, name: hr ? e.nameHr : e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
-        wed: { name: hr ? 'Noge' : 'Legs', restDay: false, exercises: ['squat', 'rdl', 'leg_press', 'leg_curl', 'calf_raise', 'hip_thrust'].map((id) => { const e = exercises.find((x) => x.id === id)!; return { exerciseId: id, name: hr ? e.nameHr : e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
+        mon: { name: 'Push', restDay: false, exercises: ['Barbell_Bench_Press_-_Medium_Grip', 'Barbell_Incline_Bench_Press_-_Medium_Grip', 'Dumbbell_Flyes', 'Side_Lateral_Raise', 'Triceps_Pushdown'].map((id) => { const e = getExerciseById(id) || { nameHr: id, name: id, defaultSets: 3, defaultReps: '10', defaultRest: 60 } as any; return { exerciseId: id, name: e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
+        tue: { name: 'Pull', restDay: false, exercises: ['Pullups', 'Bent_Over_Barbell_Row', 'Wide-Grip_Lat_Pulldown', 'Face_Pull', 'Barbell_Curl', 'Alternate_Hammer_Curl'].map((id) => { const e = getExerciseById(id) || { nameHr: id, name: id, defaultSets: 3, defaultReps: '10', defaultRest: 60 } as any; return { exerciseId: id, name: e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
+        wed: { name: hr ? 'Noge' : 'Legs', restDay: false, exercises: ['Barbell_Squat', 'Romanian_Deadlift_With_Dumbbells', 'Leg_Press', 'Lying_Leg_Curls', 'Standing_Calf_Raises', 'Barbell_Hip_Thrust'].map((id) => { const e = getExerciseById(id) || { nameHr: id, name: id, defaultSets: 3, defaultReps: '10', defaultRest: 60 } as any; return { exerciseId: id, name: e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
         thu: { name: hr ? 'Odmor' : 'Rest', restDay: true, exercises: [] },
-        fri: { name: 'Upper', restDay: false, exercises: ['ohp', 'db_row', 'arnold_press', 'skull_crusher', 'preacher_curl'].map((id) => { const e = exercises.find((x) => x.id === id)!; return { exerciseId: id, name: hr ? e.nameHr : e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
-        sat: { name: 'HIIT + Core', restDay: false, exercises: ['burpee', 'kb_swing', 'mountain_climber', 'plank', 'russian_twist'].map((id) => { const e = exercises.find((x) => x.id === id)!; return { exerciseId: id, name: hr ? e.nameHr : e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
+        fri: { name: 'Upper', restDay: false, exercises: ['Standing_Military_Press', 'One-Arm_Dumbbell_Row', 'Arnold_Dumbbell_Press', 'Lying_Triceps_Press', 'Preacher_Curl'].map((id) => { const e = getExerciseById(id) || { nameHr: id, name: id, defaultSets: 3, defaultReps: '10', defaultRest: 60 } as any; return { exerciseId: id, name: e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
+        sat: { name: 'HIIT + Core', restDay: false, exercises: ['Burpee', 'Kettlebell_Sumo_Deadlift_High_Pull', 'Mountain_Climbers', 'Plank', 'Spell_Caster'].map((id) => { const e = getExerciseById(id) || { nameHr: id, name: id, defaultSets: 3, defaultReps: '10', defaultRest: 60 } as any; return { exerciseId: id, name: e.name, sets: e.defaultSets, reps: e.defaultReps, rest: e.defaultRest, done: false }; }) },
         sun: { name: hr ? 'Odmor' : 'Rest', restDay: true, exercises: [] },
       };
       setPlan(preset);
@@ -222,12 +222,26 @@ Koristi ISKLJUČIVO ove exercise ID-ove: ${exercises.map(e => e.id).join(',')}`,
           <>
             {/* Exercise list */}
             {dayPlan.exercises.map((ex, i) => {
-              const exInfo = exercises.find((e) => e.id === ex.exerciseId);
+              const exInfo = getExerciseById(ex.exerciseId);
+              const exImgs = exInfo?.images;
               return (
-                <div key={i} className="flex items-center gap-2 py-2 px-2 rounded-xl mb-1 bg-white/[0.02] border border-fit-border/30 group">
-                  <div className="text-[10px] text-fit-dim w-4">{i + 1}</div>
-                  <div className="flex-1 cursor-pointer" onClick={() => exInfo && setShowDemo(exInfo)}>
-                    <div className="text-xs font-bold text-fit-text">{ex.name}</div>
+                <div key={i} className="flex items-center gap-2 py-2 px-2 rounded-xl mb-1 bg-white/[0.02] border border-fit-border/30 group hover:border-fit-accent/30 transition-colors">
+                  {/* Thumbnail — click opens GIF demo */}
+                  <div className="shrink-0 cursor-pointer" onClick={() => exInfo && setShowDemo(exInfo)}>
+                    {exImgs && exImgs[0] ? (
+                      <div className="w-11 h-11 rounded-lg bg-white overflow-hidden relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={exImgs[0]} alt="" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity">
+                          <span className="text-white text-xs">▶</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-11 h-11 rounded-lg bg-white/[0.04] flex items-center justify-center text-base">🏋️</div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => exInfo && setShowDemo(exInfo)}>
+                    <div className="text-xs font-bold text-fit-text truncate">{ex.name}</div>
                     <div className="flex gap-2 items-center">
                       <input value={ex.sets} onChange={(e) => {
                         const exs = [...dayPlan.exercises];
