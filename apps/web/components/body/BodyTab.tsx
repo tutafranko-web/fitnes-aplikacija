@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useT } from '@/hooks/useLocale';
 import { useLocaleStore } from '@/hooks/useLocale';
 import { defaultSoreness, sorenessLevels } from '@/lib/constants/soreness';
 import { stretchMap } from '@/lib/constants/muscleMap';
+import { getGroupsByBodyMapKey, getRandomFunFact, TOTAL_HEADS, musclesDatabase } from '@/lib/constants/musclesDatabase';
+import { usePassport, useCoinStore, useTamagotchi, COIN_REWARDS } from '@/lib/gamificationStore';
 import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
@@ -26,7 +28,21 @@ export default function BodyTab() {
     bodyFat: number; muscleMass: number; fitLevel: string; score: number; bmi: number;
     weak: string[]; strong: string[];
   } | null>(null);
+  const [funFact, setFunFact] = useState<string>('');
+  const [showPassport, setShowPassport] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Gamification stores
+  const passport = usePassport();
+  const coins = useCoinStore();
+  const tama = useTamagotchi();
+
+  // Initialize stores from localStorage
+  useEffect(() => {
+    passport.init();
+    coins.init();
+    tama.init();
+  }, []);
 
   const handlePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -83,6 +99,12 @@ export default function BodyTab() {
   const cycleS = (id: string) => {
     setSoreness((p) => ({ ...p, [id]: ((p[id] || 0) + 1) % 5 }));
     setSelected(id);
+    // Show fun fact for this body map group
+    const groups = getGroupsByBodyMapKey(id);
+    if (groups.length > 0) {
+      const group = groups[Math.floor(Math.random() * groups.length)];
+      setFunFact(getRandomFunFact(group.id, locale));
+    }
   };
 
   const sColor = (v: number) => sorenessColors[v];
@@ -243,6 +265,113 @@ export default function BodyTab() {
           </div>
         ))}
       </div>
+
+      {/* Fun Fact (appears when muscle selected) */}
+      {funFact && selected && (
+        <Box glow="#ffd700">
+          <div className="flex items-start gap-2">
+            <span className="text-lg">🧠</span>
+            <div>
+              <div className="text-[9px] text-[#ffd700] font-extrabold uppercase tracking-wider mb-1">
+                {locale === 'hr' ? 'Jesi znao?' : 'Did you know?'}
+              </div>
+              <div className="text-[11px] text-fit-muted leading-relaxed">{funFact}</div>
+            </div>
+          </div>
+        </Box>
+      )}
+
+      {/* Muscle Passport + Coins + Tamagotchi Status Bar */}
+      <Box>
+        <div className="flex items-center justify-between mb-2">
+          <Lbl icon="🛂" text={locale === 'hr' ? 'Mišićna putovnica' : 'Muscle Passport'} />
+          <button
+            onClick={() => setShowPassport(!showPassport)}
+            className="text-[10px] text-fit-accent font-bold cursor-pointer hover:underline"
+          >
+            {showPassport ? '▲' : '▼'} {passport.totalUnlocked}/{TOTAL_HEADS}
+          </button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="relative h-3 rounded-full overflow-hidden mb-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+          <div
+            className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
+            style={{
+              width: `${(passport.totalUnlocked / TOTAL_HEADS) * 100}%`,
+              background: 'linear-gradient(90deg, #00f0b5, #7c5cfc, #ffd700)',
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center text-[8px] font-extrabold text-white/60">
+            {Math.round((passport.totalUnlocked / TOTAL_HEADS) * 100)}%
+          </div>
+        </div>
+
+        {/* Badge */}
+        {passport.getBadge() && (
+          <div className="text-[10px] text-fit-accent font-bold mb-2">
+            🏅 {locale === 'hr' ? passport.getBadge()?.nameHr : passport.getBadge()?.nameEn}
+          </div>
+        )}
+
+        {/* Stats row: Coins + Streak + Mood */}
+        <div className="flex gap-2">
+          <div className="flex-1 text-center py-1.5 rounded-lg" style={{ background: '#ffd70008', border: '1px solid #ffd70018' }}>
+            <div className="text-[9px] text-[#ffd700]/60">FIT Coins</div>
+            <div className="text-sm font-black text-[#ffd700]">{coins.balance}</div>
+          </div>
+          <div className="flex-1 text-center py-1.5 rounded-lg" style={{ background: '#ff6b4a08', border: '1px solid #ff6b4a18' }}>
+            <div className="text-[9px] text-[#ff6b4a]/60">Streak</div>
+            <div className="text-sm font-black text-[#ff6b4a]">🔥 {coins.streak}</div>
+          </div>
+          <div className="flex-1 text-center py-1.5 rounded-lg" style={{ background: '#00f0b508', border: '1px solid #00f0b518' }}>
+            <div className="text-[9px] text-[#00f0b5]/60">{locale === 'hr' ? 'Stanje' : 'Mood'}</div>
+            <div className="text-sm font-black">
+              {tama.mood === 'beast' ? '😤' : tama.mood === 'happy' ? '😊' : tama.mood === 'meh' ? '😐' : tama.mood === 'neglected' ? '😢' : '💀'}
+            </div>
+          </div>
+        </div>
+
+        {/* Expandable Passport Grid */}
+        {showPassport && (
+          <div className="mt-3 pt-3 border-t border-fit-border">
+            <div className="grid grid-cols-1 gap-2">
+              {musclesDatabase.map((group) => {
+                const progress = passport.getGroupProgress(group.id);
+                return (
+                  <div key={group.id} className="p-2.5 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[11px] font-bold text-fit-text">
+                        {locale === 'hr' ? group.nameHr : group.nameEn}
+                      </span>
+                      <span className="text-[9px] text-fit-dim">{progress.unlocked}/{progress.total}</span>
+                    </div>
+                    <div className="flex gap-1 flex-wrap">
+                      {group.heads.map((head) => {
+                        const unlocked = passport.isHeadUnlocked(head.id);
+                        return (
+                          <div
+                            key={head.id}
+                            className="text-[8px] px-1.5 py-0.5 rounded font-semibold"
+                            style={{
+                              background: unlocked ? '#00f0b515' : 'rgba(255,255,255,0.02)',
+                              color: unlocked ? '#00f0b5' : '#334',
+                              border: `1px solid ${unlocked ? '#00f0b525' : 'rgba(255,255,255,0.04)'}`,
+                            }}
+                          >
+                            {unlocked ? '✓ ' : '🔒 '}
+                            {locale === 'hr' ? head.nameHr : head.nameEn}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </Box>
 
       {/* Soreness Grid */}
       <Box>
