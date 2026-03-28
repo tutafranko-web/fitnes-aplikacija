@@ -173,35 +173,37 @@ const backMuscles: MuscleZone[] = [
 
 export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isFront }: Props) {
   const [hovered, setHovered] = useState<string | null>(null);
+  const [tapped, setTapped] = useState<string | null>(null);
   const t = useT();
   const muscles = isFront ? frontMuscles : backMuscles;
 
-  const getSoreVal = (id: string) => {
-    const m = muscles.find(m => m.id === id);
-    return m ? (soreness[m.group] || 0) : 0;
-  };
+  // Track which zone is the "primary" (first) for each group — only this one shows tooltip
+  const primaryZoneForGroup = new Map<string, string>();
+  muscles.forEach(m => {
+    if (!primaryZoneForGroup.has(m.group)) primaryZoneForGroup.set(m.group, m.id);
+  });
 
   const getMuscleLabel = (m: MuscleZone) => {
     const key = m.group as keyof typeof t.body.muscles;
     return t.body.muscles[key] || m.label;
   };
 
-  // Muscle color based on state (anatomy-illustration style)
   const getMuscleColor = (group: string, val: number) => {
     if (val >= 4) return '#ff2060';
     if (val >= 3) return '#ff4444';
     if (val >= 2) return '#e8a030';
     if (val >= 1) return '#5588cc';
-    // Healthy — deep red/brown anatomy color
     return isFront ? '#c4564a' : '#b84a3e';
   };
 
-  const getMuscleHighlight = (group: string) => {
-    return isFront ? '#d87068' : '#cc6058';
-  };
+  const getMuscleHighlight = () => isFront ? '#d87068' : '#cc6058';
+  const getMuscleShadow = () => isFront ? '#8a3028' : '#7a2820';
 
-  const getMuscleShadow = (group: string) => {
-    return isFront ? '#8a3028' : '#7a2820';
+  // Handle touch — only one tooltip at a time
+  const handleTap = (m: MuscleZone, e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    setTapped(m.id);
+    onMuscleClick(m.group);
   };
 
   return (
@@ -234,6 +236,12 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
           <pattern id="veins" patternUnits="userSpaceOnUse" width="6" height="8" patternTransform="rotate(15)">
             <path d="M1,0 Q2,4 1,8" fill="none" stroke="#4466aa44" strokeWidth=".3" />
             <path d="M4,0 Q3,3 4.5,6 Q5,8 4,8" fill="none" stroke="#4466aa33" strokeWidth=".2" />
+          </pattern>
+
+          {/* Muscle fiber direction pattern — adds realism */}
+          <pattern id="fiberPattern" patternUnits="userSpaceOnUse" width="3" height="4" patternTransform="rotate(5)">
+            <line x1="0" y1="0" x2="0" y2="4" stroke="#ffffff" strokeWidth=".15" />
+            <line x1="1.5" y1="0" x2="1.5" y2="4" stroke="#000000" strokeWidth=".1" />
           </pattern>
 
           {/* 3D lighting filter */}
@@ -269,8 +277,8 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
           {muscles.map(m => {
             const val = soreness[m.group] || 0;
             const base = getMuscleColor(m.group, val);
-            const hi = val > 0 ? base : getMuscleHighlight(m.group);
-            const sh = val > 0 ? base : getMuscleShadow(m.group);
+            const hi = val > 0 ? base : getMuscleHighlight();
+            const sh = val > 0 ? base : getMuscleShadow();
             return (
               <radialGradient key={`mg_${m.id}`} id={`mg_${m.id}`} cx="40%" cy="30%" r="70%">
                 <stop offset="0%" stopColor={hi} stopOpacity=".95" />
@@ -338,11 +346,14 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
           const inf = getInflammationStyle(val);
           const isHov = hovered === m.id;
           const isSel = selected === m.group;
-          const active = isHov || isSel;
+          const highlight = isHov || isSel;
+          // Only ONE tooltip per group: either the hovered zone or the primary zone when selected
+          const isPrimary = primaryZoneForGroup.get(m.group) === m.id;
+          const showTooltip = isHov || (isSel && isPrimary && hovered !== m.id && !muscles.some(z => z.group === m.group && z.id === hovered));
 
           return (
             <g key={m.id}
-              onClick={() => onMuscleClick(m.group)}
+              onClick={(e) => handleTap(m, e)}
               onMouseEnter={() => setHovered(m.id)}
               onMouseLeave={() => setHovered(null)}
               className="cursor-pointer">
@@ -358,10 +369,10 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
               <path
                 d={m.d}
                 fill={`url(#mg_${m.id})`}
-                stroke={active ? '#fff' : val >= 2 ? inf.stroke : '#8a302866'}
-                strokeWidth={active ? '.8' : '.3'}
+                stroke={highlight ? '#fff' : val >= 2 ? inf.stroke : '#8a302866'}
+                strokeWidth={highlight ? '.8' : '.3'}
                 filter="url(#muscle3d)"
-                opacity={active ? 1 : .92}
+                opacity={highlight ? 1 : .92}
                 className="transition-all duration-200"
               />
 
@@ -371,8 +382,13 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
               )}
 
               {/* Hover highlight shimmer */}
-              {active && (
+              {highlight && (
                 <path d={m.d} fill="rgba(255,255,255,.12)" />
+              )}
+
+              {/* Muscle fiber direction lines — subtle anatomy detail */}
+              {!highlight && val === 0 && (
+                <path d={m.d} fill="url(#fiberPattern)" opacity=".08" />
               )}
 
               {/* Pulsing pain indicator */}
@@ -385,15 +401,12 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
                 </circle>
               )}
 
-              {/* Tooltip */}
-              {active && (
+              {/* Tooltip — only ONE per group */}
+              {showTooltip && (
                 <g>
-                  {/* Tooltip connector line */}
                   <line x1={m.cx} y1={m.cy} x2={m.cx} y2={m.cy - 6} stroke={inf.stroke} strokeWidth=".3" opacity=".5" />
-                  {/* Background */}
                   <rect x={m.cx - 14} y={m.cy - 13} width="28" height="7" rx="2"
                     fill="rgba(6,8,16,.95)" stroke={inf.stroke} strokeWidth=".4" />
-                  {/* Label */}
                   <text x={m.cx} y={m.cy - 8} textAnchor="middle" fill={val > 0 ? inf.stroke : '#00f0b5'}
                     fontSize="3.2" fontWeight="700" fontFamily="Outfit, sans-serif">
                     {getMuscleLabel(m)}
@@ -424,6 +437,38 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
             <ellipse cx="73" cy="117" rx="3" ry="2.5" fill="none" stroke="#d8ccc0" strokeWidth=".3" />
           </g>
         )}
+
+        {/* ── MUSCLE SEPARATION GROOVES ─────────────── */}
+        <g stroke="#5a2018" strokeWidth=".4" fill="none" opacity=".3">
+          {isFront ? (
+            <>
+              {/* Delt-bicep groove */}
+              <path d="M30,40 C31,41 32,42 33,42" />
+              <path d="M90,40 C89,41 88,42 87,42" />
+              {/* Pec-delt groove */}
+              <path d="M44,30 C42,32 38,36 35,38" />
+              <path d="M76,30 C78,32 82,36 85,38" />
+              {/* Quad inner/outer split */}
+              <path d="M47,82 C48,90 48,100 47,110" />
+              <path d="M73,82 C72,90 72,100 73,110" />
+              {/* Bicep-forearm crease */}
+              <path d="M26,62 C28,63 30,63 32,62" />
+              <path d="M88,62 C90,63 92,63 94,62" />
+            </>
+          ) : (
+            <>
+              {/* Lat-tricep groove */}
+              <path d="M34,40 C35,42 36,44 38,44" />
+              <path d="M82,40 C81,42 80,44 78,44" />
+              {/* Glute crease */}
+              <path d="M44,88 C48,90 52,90 58,89" />
+              <path d="M72,88 C68,90 64,90 58,89" />
+              {/* Ham-calf groove */}
+              <path d="M40,118 C42,120 44,120 46,118" />
+              <path d="M76,118 C74,120 72,120 70,118" />
+            </>
+          )}
+        </g>
 
         {/* ── NAVEL ──────────────────────────────────── */}
         {isFront && (
