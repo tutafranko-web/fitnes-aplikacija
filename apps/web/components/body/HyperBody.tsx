@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useT } from '@/hooks/useLocale';
-import { getInflammationStyle } from '@/lib/constants/soreness';
 
 interface Props {
   soreness: Record<string, number>;
@@ -12,482 +11,361 @@ interface Props {
   isFront: boolean;
 }
 
-// ═══════════════════════════════════════════════════════════
-// HYPERREALISTIC SVG ANATOMICAL BODY
-// No background image — pure SVG with medical-illustration quality:
-// - Multi-layer radial/linear gradients for 3D muscle depth
-// - Muscle fiber direction hints
-// - Separation lines between muscle groups
-// - Vein patterns on arms
-// - Anatomically accurate shapes (serratus, V-lines, obliques)
-// - feSpecularLighting for wet/shiny muscle surface
-// - 32 interactive zones (front 17 + back 15)
-// ═══════════════════════════════════════════════════════════
-
-interface MuscleZone {
-  id: string;
-  group: string;
-  d: string; // SVG path
-  label: string;
-  cx: number;
-  cy: number;
+interface TooltipInfo {
+  name: string;
+  sub: string;
+  x: number;
+  y: number;
 }
 
-// ── FRONT VIEW MUSCLES ──────────────────────────────────────
+// Map detailed muscle IDs → app muscle groups
+const GROUP_MAP: Record<string, string> = {
+  neck: 'neck', deltoid: 'shoulders', pectoralis: 'chest', serratus: 'core',
+  biceps: 'biceps', forearm: 'forearms', abs: 'core', obliques: 'core',
+  hip_flexors: 'quads', quadriceps: 'quads', adductors: 'quads', tibialis: 'calves',
+  trapezius: 'traps', rhomboids: 'back', latissimus: 'back', rotator_cuff: 'shoulders',
+  triceps: 'triceps', erector_spinae: 'back', glutes: 'glutes',
+  hamstrings: 'hamstrings', calves: 'calves',
+};
 
-const frontMuscles: MuscleZone[] = [
-  // NECK (sternocleidomastoid)
-  { id: 'f_neck_l', group: 'neck', label: 'Vrat',
-    d: 'M53,22 C51,22 49,24 48,27 L48,30 C49,30 51,29 53,28 L55,26 C55,24 54,22 53,22Z', cx: 51, cy: 25 },
-  { id: 'f_neck_r', group: 'neck', label: 'Vrat',
-    d: 'M67,22 C69,22 71,24 72,27 L72,30 C71,30 69,29 67,28 L65,26 C65,24 66,22 67,22Z', cx: 69, cy: 25 },
+const MUSCLE_NAMES: Record<string, string> = {
+  neck: 'Vrat', deltoid: 'Ramena', pectoralis: 'Prsa', serratus: 'Serratus',
+  biceps: 'Biceps', forearm: 'Podlaktica', abs: 'Trbušni', obliques: 'Kosi trbušni',
+  hip_flexors: 'Fleksori kuka', quadriceps: 'Quadriceps', adductors: 'Aduktori',
+  tibialis: 'Tibialis', trapezius: 'Trapez', rhomboids: 'Romboidni',
+  latissimus: 'Široki leđni', rotator_cuff: 'Rot. manšeta', triceps: 'Triceps',
+  erector_spinae: 'Paraspinalni', glutes: 'Stražnjica', hamstrings: 'Hamstringsi',
+  calves: 'Listovi',
+};
 
-  // LEFT DELTOID (anterior) — round cap shape
-  { id: 'f_delt_l', group: 'shoulders', label: 'Ramena',
-    d: 'M44,28 C40,27 36,28 33,30 C30,33 29,36 30,39 L33,40 C34,38 36,34 40,31 C42,30 44,29 44,28Z', cx: 37, cy: 33 },
-  // RIGHT DELTOID
-  { id: 'f_delt_r', group: 'shoulders', label: 'Ramena',
-    d: 'M76,28 C80,27 84,28 87,30 C90,33 91,36 90,39 L87,40 C86,38 84,34 80,31 C78,30 76,29 76,28Z', cx: 83, cy: 33 },
-
-  // LEFT PECTORAL — fan shape with separation
-  { id: 'f_pec_l', group: 'chest', label: 'Prsa',
-    d: 'M48,30 C46,30 44,31 42,33 L35,38 C34,40 35,43 37,44 L44,46 C48,47 52,46 54,44 L58,42 C59,40 59,37 58,35 L56,32 C54,30 51,29 48,30Z', cx: 47, cy: 38 },
-  // RIGHT PECTORAL
-  { id: 'f_pec_r', group: 'chest', label: 'Prsa',
-    d: 'M72,30 C74,30 76,31 78,33 L85,38 C86,40 85,43 83,44 L76,46 C72,47 68,46 66,44 L62,42 C61,40 61,37 62,35 L64,32 C66,30 69,29 72,30Z', cx: 73, cy: 38 },
-
-  // LEFT BICEP — bulging oval
-  { id: 'f_bi_l', group: 'biceps', label: 'Biceps',
-    d: 'M30,40 C28,42 26,46 25,50 C24,54 25,58 27,61 L30,62 C32,60 33,56 33,52 C33,48 32,44 30,40Z', cx: 29, cy: 51 },
-  // RIGHT BICEP
-  { id: 'f_bi_r', group: 'biceps', label: 'Biceps',
-    d: 'M90,40 C92,42 94,46 95,50 C96,54 95,58 93,61 L90,62 C88,60 87,56 87,52 C87,48 88,44 90,40Z', cx: 91, cy: 51 },
-
-  // LEFT FOREARM
-  { id: 'f_fore_l', group: 'forearms', label: 'Podlaktice',
-    d: 'M27,62 C25,65 23,70 22,75 C21,80 22,84 24,87 L27,88 C28,85 29,80 29,75 C29,70 28,66 27,62Z', cx: 25, cy: 75 },
-  // RIGHT FOREARM
-  { id: 'f_fore_r', group: 'forearms', label: 'Podlaktice',
-    d: 'M93,62 C95,65 97,70 98,75 C99,80 98,84 96,87 L93,88 C92,85 91,80 91,75 C91,70 92,66 93,62Z', cx: 95, cy: 75 },
-
-  // UPPER ABS (rectus abdominis top 4 blocks)
-  { id: 'f_abs_u', group: 'core', label: 'Gornji trbuh',
-    d: 'M54,44 L56,44 C58,44 59,46 59,48 L59,56 C59,58 58,59 56,59 L54,59 L54,44Z M66,44 L64,44 C62,44 61,46 61,48 L61,56 C61,58 62,59 64,59 L66,59 L66,44Z', cx: 60, cy: 51 },
-
-  // LOWER ABS (rectus abdominis bottom 2 blocks + V-lines)
-  { id: 'f_abs_l', group: 'core', label: 'Donji trbuh',
-    d: 'M54,59 L56,59 C58,59 59,61 59,63 L59,70 C59,72 58,74 56,75 L54,76 C53,74 52,72 52,70 L53,63 C53,61 53,60 54,59Z M66,59 L64,59 C62,59 61,61 61,63 L61,70 C61,72 62,74 64,75 L66,76 C67,74 68,72 68,70 L67,63 C67,61 67,60 66,59Z', cx: 60, cy: 67 },
-
-  // LEFT OBLIQUE (external oblique — diagonal fiber pattern)
-  { id: 'f_obl_l', group: 'core', label: 'Kosi mišići',
-    d: 'M44,46 C46,47 48,48 50,50 L52,54 L52,70 C52,72 50,75 48,77 L44,78 C42,76 40,72 39,68 L38,60 C38,54 40,50 44,46Z', cx: 45, cy: 62 },
-  // RIGHT OBLIQUE
-  { id: 'f_obl_r', group: 'core', label: 'Kosi mišići',
-    d: 'M76,46 C74,47 72,48 70,50 L68,54 L68,70 C68,72 70,75 72,77 L76,78 C78,76 80,72 81,68 L82,60 C82,54 80,50 76,46Z', cx: 75, cy: 62 },
-
-  // SERRATUS ANTERIOR (left) — finger-like protrusions
-  { id: 'f_serr_l', group: 'core', label: 'Serratus',
-    d: 'M38,44 L42,46 L40,49 L43,50 L41,53 L44,54 L42,56 L38,55 C36,52 36,48 38,44Z', cx: 40, cy: 50 },
-  // SERRATUS ANTERIOR (right)
-  { id: 'f_serr_r', group: 'core', label: 'Serratus',
-    d: 'M82,44 L78,46 L80,49 L77,50 L79,53 L76,54 L78,56 L82,55 C84,52 84,48 82,44Z', cx: 80, cy: 50 },
-
-  // LEFT QUAD (rectus femoris + vastus lateralis/medialis — teardrop)
-  { id: 'f_q_l', group: 'quads', label: 'Kvadricepsi',
-    d: 'M44,78 C42,80 40,84 39,88 C38,94 39,100 40,106 C41,110 43,114 46,116 L50,117 C52,115 54,112 55,108 C56,104 56,98 55,92 C54,86 52,81 50,78 L44,78Z', cx: 47, cy: 97 },
-  // RIGHT QUAD
-  { id: 'f_q_r', group: 'quads', label: 'Kvadricepsi',
-    d: 'M76,78 C78,80 80,84 81,88 C82,94 81,100 80,106 C79,110 77,114 74,116 L70,117 C68,115 66,112 65,108 C64,104 64,98 65,92 C66,86 68,81 70,78 L76,78Z', cx: 73, cy: 97 },
-
-  // ADDUCTORS (inner thigh)
-  { id: 'f_add_l', group: 'quads', label: 'Aduktori',
-    d: 'M50,78 L55,82 C56,86 57,92 57,98 C57,102 56,106 54,108 L50,110 L50,78Z', cx: 53, cy: 94 },
-  { id: 'f_add_r', group: 'quads', label: 'Aduktori',
-    d: 'M70,78 L65,82 C64,86 63,92 63,98 C63,102 64,106 66,108 L70,110 L70,78Z', cx: 67, cy: 94 },
-
-  // LEFT TIBIALIS (shin front)
-  { id: 'f_shin_l', group: 'calves', label: 'Potkoljenice',
-    d: 'M42,118 C41,122 40,128 40,134 C40,140 41,146 42,150 L46,152 C47,148 48,142 48,136 C48,130 47,124 46,118 L42,118Z', cx: 44, cy: 135 },
-  // RIGHT TIBIALIS
-  { id: 'f_shin_r', group: 'calves', label: 'Potkoljenice',
-    d: 'M78,118 C79,122 80,128 80,134 C80,140 79,146 78,150 L74,152 C73,148 72,142 72,136 C72,130 73,124 74,118 L78,118Z', cx: 76, cy: 135 },
-];
-
-// ── BACK VIEW MUSCLES ───────────────────────────────────────
-
-const backMuscles: MuscleZone[] = [
-  // TRAPS (upper + mid)
-  { id: 'b_trap', group: 'traps', label: 'Trapez',
-    d: 'M52,20 C48,20 44,22 42,24 L38,28 C36,30 36,33 38,34 L44,32 C48,30 52,28 56,27 L60,27 C64,28 68,30 72,32 L78,34 C80,33 80,30 78,28 L74,24 C72,22 68,20 64,20 L60,19 L56,19 L52,20Z', cx: 58, cy: 26 },
-
-  // LEFT REAR DELTOID
-  { id: 'b_rd_l', group: 'shoulders', label: 'Stražnje rame',
-    d: 'M38,28 C34,28 30,30 28,33 C26,36 27,39 29,40 L33,41 C35,38 37,34 39,31 L38,28Z', cx: 33, cy: 34 },
-  // RIGHT REAR DELTOID
-  { id: 'b_rd_r', group: 'shoulders', label: 'Stražnje rame',
-    d: 'M78,28 C82,28 86,30 88,33 C90,36 89,39 87,40 L83,41 C81,38 79,34 77,31 L78,28Z', cx: 83, cy: 34 },
-
-  // LEFT TRICEP (horseshoe shape)
-  { id: 'b_tri_l', group: 'triceps', label: 'Triceps',
-    d: 'M29,41 C27,44 25,48 24,52 C23,56 24,60 26,63 L30,64 C31,60 32,56 32,52 C32,48 31,44 29,41Z', cx: 28, cy: 52 },
-  // RIGHT TRICEP
-  { id: 'b_tri_r', group: 'triceps', label: 'Triceps',
-    d: 'M87,41 C89,44 91,48 92,52 C93,56 92,60 90,63 L86,64 C85,60 84,56 84,52 C84,48 85,44 87,41Z', cx: 88, cy: 52 },
-
-  // RHOMBOIDS / MID BACK
-  { id: 'b_rhomb', group: 'back', label: 'Gornja leđa',
-    d: 'M48,32 C50,31 54,30 58,30 L64,31 L68,32 C68,36 66,40 64,42 L58,44 L54,44 L48,42 C46,40 44,36 44,34 L48,32Z', cx: 56, cy: 37 },
-
-  // LEFT LAT (large wing shape)
-  { id: 'b_lat_l', group: 'back', label: 'Leđa',
-    d: 'M38,34 C36,36 34,40 33,44 C32,48 33,52 35,56 L38,58 C40,56 42,52 44,48 L46,44 L44,40 L42,36 L38,34Z', cx: 38, cy: 46 },
-  // RIGHT LAT
-  { id: 'b_lat_r', group: 'back', label: 'Leđa',
-    d: 'M78,34 C80,36 82,40 83,44 C84,48 83,52 81,56 L78,58 C76,56 74,52 72,48 L70,44 L72,40 L74,36 L78,34Z', cx: 78, cy: 46 },
-
-  // LOWER BACK (erector spinae)
-  { id: 'b_lb', group: 'back', label: 'Donja leđa',
-    d: 'M48,48 C46,50 44,54 44,58 L44,64 C46,68 50,72 54,74 L58,75 L62,74 C66,72 70,68 72,64 L72,58 C72,54 70,50 68,48 L64,46 L58,44 L52,46 L48,48Z', cx: 58, cy: 60 },
-
-  // LEFT GLUTE (rounded mass)
-  { id: 'b_gl_l', group: 'glutes', label: 'Gluteus',
-    d: 'M44,68 C42,70 40,74 39,78 C38,82 40,86 43,88 L48,89 C52,89 55,87 56,84 L58,80 C58,76 56,72 54,70 L50,68 L44,68Z', cx: 48, cy: 78 },
-  // RIGHT GLUTE
-  { id: 'b_gl_r', group: 'glutes', label: 'Gluteus',
-    d: 'M72,68 C74,70 76,74 77,78 C78,82 76,86 73,88 L68,89 C64,89 61,87 60,84 L58,80 C58,76 60,72 62,70 L66,68 L72,68Z', cx: 68, cy: 78 },
-
-  // LEFT HAMSTRING (3 heads visible)
-  { id: 'b_ham_l', group: 'hamstrings', label: 'Zadnja loža',
-    d: 'M42,89 C40,93 38,98 37,104 C36,110 38,115 40,118 L46,120 C48,116 50,110 50,104 C50,98 49,93 48,89 L42,89Z', cx: 44, cy: 104 },
-  // RIGHT HAMSTRING
-  { id: 'b_ham_r', group: 'hamstrings', label: 'Zadnja loža',
-    d: 'M74,89 C76,93 78,98 79,104 C80,110 78,115 76,118 L70,120 C68,116 66,110 66,104 C66,98 67,93 68,89 L74,89Z', cx: 72, cy: 104 },
-
-  // LEFT CALF (gastrocnemius — diamond)
-  { id: 'b_calf_l', group: 'calves', label: 'Listovi',
-    d: 'M40,120 C38,124 37,130 37,136 C37,142 38,147 40,150 L44,152 C46,148 47,142 47,136 C47,130 46,124 44,120 L40,120Z', cx: 42, cy: 136 },
-  // RIGHT CALF
-  { id: 'b_calf_r', group: 'calves', label: 'Listovi',
-    d: 'M76,120 C78,124 79,130 79,136 C79,142 78,147 76,150 L72,152 C70,148 69,142 69,136 C69,130 70,124 72,120 L76,120Z', cx: 74, cy: 136 },
-];
+// Inflammation filter styles (hue-rotate trick works on any base color)
+const INF_STYLES: Record<number, React.CSSProperties> = {
+  0: {},
+  1: { filter: 'saturate(.5) hue-rotate(85deg)' },
+  2: { filter: 'saturate(.7) hue-rotate(35deg)' },
+  3: { filter: 'saturate(1.1) hue-rotate(-8deg) brightness(1.1)' },
+  4: { filter: 'saturate(1.4) hue-rotate(-20deg) brightness(1.15)' },
+};
 
 export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isFront }: Props) {
-  const [hovered, setHovered] = useState<string | null>(null);
-  const [tapped, setTapped] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const t = useT();
-  const muscles = isFront ? frontMuscles : backMuscles;
 
-  // Track which zone is the "primary" (first) for each group — only this one shows tooltip
-  const primaryZoneForGroup = new Map<string, string>();
-  muscles.forEach(m => {
-    if (!primaryZoneForGroup.has(m.group)) primaryZoneForGroup.set(m.group, m.id);
-  });
+  const getGroup = (muscleId: string) => GROUP_MAP[muscleId] || muscleId;
+  const getLevel = (muscleId: string) => soreness[getGroup(muscleId)] || 0;
 
-  const getMuscleLabel = (m: MuscleZone) => {
-    const key = m.group as keyof typeof t.body.muscles;
-    return t.body.muscles[key] || m.label;
-  };
+  const handleEnter = useCallback((e: React.MouseEvent<SVGElement>) => {
+    const el = e.currentTarget;
+    const m = el.dataset.m || '';
+    const h = el.dataset.h || '';
+    const sub = h.split('|')[1] || '';
+    const name = MUSCLE_NAMES[m] || m;
+    if (!wrapRef.current) return;
+    const wr = wrapRef.current.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    setTooltip({
+      name,
+      sub,
+      x: r.left - wr.left + r.width / 2,
+      y: r.top - wr.top - 10,
+    });
+  }, []);
 
-  const getMuscleColor = (group: string, val: number) => {
-    if (val >= 4) return '#ff2060';
-    if (val >= 3) return '#ff4444';
-    if (val >= 2) return '#e8a030';
-    if (val >= 1) return '#5588cc';
-    return isFront ? '#c4564a' : '#b84a3e';
-  };
+  const handleLeave = useCallback(() => setTooltip(null), []);
 
-  const getMuscleHighlight = () => isFront ? '#d87068' : '#cc6058';
-  const getMuscleShadow = () => isFront ? '#8a3028' : '#7a2820';
+  const handleClick = useCallback((e: React.MouseEvent<SVGElement>) => {
+    const m = e.currentTarget.dataset.m || '';
+    onMuscleClick(getGroup(m));
+  }, [onMuscleClick]);
 
-  // Handle touch — only one tooltip at a time
-  const handleTap = (m: MuscleZone, e: React.MouseEvent | React.TouchEvent) => {
-    e.stopPropagation();
-    setTapped(m.id);
-    onMuscleClick(m.group);
+  // Build className + style for each muscle path
+  const mp = (muscleId: string, extraClass?: string) => {
+    const group = getGroup(muscleId);
+    const lv = soreness[group] || 0;
+    const isSel = selected === group;
+    let cls = 'mh';
+    if (lv > 0) cls += ` i${lv}`;
+    if (isSel) cls += ' sel';
+    if (extraClass) cls += ` ${extraClass}`;
+    return cls;
   };
 
   return (
-    <div className="transition-transform duration-300" style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}>
-      <svg viewBox="20 8 80 155" className="w-full" style={{ maxHeight: 520 }}>
-        <defs>
-          {/* ── GRADIENTS ────────────────────────────── */}
+    <div ref={wrapRef} className="relative transition-transform duration-300"
+      style={{ transform: `scale(${zoom})`, transformOrigin: 'center top' }}>
 
-          {/* Skin gradient for exposed areas */}
-          <radialGradient id="skinG" cx="50%" cy="30%" r="70%">
-            <stop offset="0%" stopColor="#e8c4b0" />
-            <stop offset="50%" stopColor="#d4a088" />
-            <stop offset="100%" stopColor="#b8846e" />
-          </radialGradient>
-
-          {/* Muscle base gradient — anatomy red */}
-          <linearGradient id="muscleBase" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#d45a4a" />
-            <stop offset="40%" stopColor="#c0483c" />
-            <stop offset="100%" stopColor="#982820" />
-          </linearGradient>
-
-          {/* Tendon/fascia white */}
-          <linearGradient id="tendonG" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f0e8e0" />
-            <stop offset="100%" stopColor="#d8ccc0" />
-          </linearGradient>
-
-          {/* Vein pattern */}
-          <pattern id="veins" patternUnits="userSpaceOnUse" width="6" height="8" patternTransform="rotate(15)">
-            <path d="M1,0 Q2,4 1,8" fill="none" stroke="#4466aa44" strokeWidth=".3" />
-            <path d="M4,0 Q3,3 4.5,6 Q5,8 4,8" fill="none" stroke="#4466aa33" strokeWidth=".2" />
-          </pattern>
-
-          {/* Muscle fiber direction pattern — adds realism */}
-          <pattern id="fiberPattern" patternUnits="userSpaceOnUse" width="3" height="4" patternTransform="rotate(5)">
-            <line x1="0" y1="0" x2="0" y2="4" stroke="#ffffff" strokeWidth=".15" />
-            <line x1="1.5" y1="0" x2="1.5" y2="4" stroke="#000000" strokeWidth=".1" />
-          </pattern>
-
-          {/* 3D lighting filter */}
-          <filter id="muscle3d" x="-5%" y="-5%" width="110%" height="110%">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="0.8" result="blur" />
-            <feSpecularLighting in="blur" surfaceScale="3" specularConstant=".4" specularExponent="20" result="spec">
-              <fePointLight x="60" y="20" z="40" />
-            </feSpecularLighting>
-            <feComposite in="spec" in2="SourceAlpha" operator="in" result="specOut" />
-            <feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3=".3" k4="0" />
-          </filter>
-
-          {/* Glow filters for inflammation */}
-          <filter id="glow2">
-            <feGaussianBlur stdDeviation="2" />
-            <feColorMatrix values="1 0 0 0 0.2  0 0.8 0 0 0.1  0 0 0.2 0 0  0 0 0 0.6 0" />
-          </filter>
-          <filter id="glow3">
-            <feGaussianBlur stdDeviation="3" />
-            <feColorMatrix values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.7 0" />
-          </filter>
-          <filter id="glow4">
-            <feGaussianBlur stdDeviation="4" />
-            <feColorMatrix values="1 0 0 0 0  0 0 0 0 0  0 0 0.3 0 0  0 0 0 0.8 0" />
-          </filter>
-
-          {/* Drop shadow for body outline */}
-          <filter id="bodyShadow">
-            <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="#000" floodOpacity=".4" />
-          </filter>
-
-          {/* Muscle-specific gradients generated per-zone */}
-          {muscles.map(m => {
-            const val = soreness[m.group] || 0;
-            const base = getMuscleColor(m.group, val);
-            const hi = val > 0 ? base : getMuscleHighlight();
-            const sh = val > 0 ? base : getMuscleShadow();
-            return (
-              <radialGradient key={`mg_${m.id}`} id={`mg_${m.id}`} cx="40%" cy="30%" r="70%">
-                <stop offset="0%" stopColor={hi} stopOpacity=".95" />
-                <stop offset="60%" stopColor={base} stopOpacity=".9" />
-                <stop offset="100%" stopColor={sh} stopOpacity=".95" />
-              </radialGradient>
-            );
-          })}
-        </defs>
-
-        {/* ── BODY SILHOUETTE (skin base) ──────────────── */}
-        <g filter="url(#bodyShadow)">
-          {/* Head */}
-          <ellipse cx="60" cy="14" rx="8" ry="9" fill="url(#skinG)" />
-          {/* Ears */}
-          <ellipse cx="51.5" cy="14" rx="1.5" ry="2.5" fill="#c9a088" />
-          <ellipse cx="68.5" cy="14" rx="1.5" ry="2.5" fill="#c9a088" />
-          {/* Hair buzz cut */}
-          <path d="M52,10 C54,6 58,4 60,4 C62,4 66,6 68,10 C68,8 66,6 60,5 C54,6 52,8 52,10Z" fill="#3a2a1a" opacity=".7" />
-
-          {/* Neck */}
-          <rect x="55" y="20" width="10" height="8" rx="2" fill="url(#skinG)" />
-
-          {/* Torso base shape */}
-          <path d={isFront
-            ? 'M44,28 C40,28 35,30 33,34 L30,40 L28,48 C26,54 28,58 30,62 L33,64 L38,66 L42,72 L44,78 L50,80 L60,82 L70,80 L76,78 L78,72 L82,66 L87,64 L90,62 C92,58 94,54 92,48 L90,40 L87,34 C85,30 80,28 76,28 L60,27 L44,28Z'
-            : 'M44,28 C40,28 35,30 33,34 L30,40 L28,48 C26,54 28,58 30,62 L33,64 L38,66 L42,72 L44,78 L50,80 L60,82 L70,80 L76,78 L78,72 L82,66 L87,64 L90,62 C92,58 94,54 92,48 L90,40 L87,34 C85,30 80,28 76,28 L60,27 L44,28Z'
-          } fill="url(#skinG)" />
-
-          {/* Arms skin base */}
-          <path d="M30,40 C28,44 25,50 24,56 C22,64 22,72 23,80 L26,88 L28,90 L30,88 C30,82 30,74 30,66 L32,58 L33,50 L30,40Z" fill="url(#skinG)" />
-          <path d="M90,40 C92,44 95,50 96,56 C98,64 98,72 97,80 L94,88 L92,90 L90,88 C90,82 90,74 90,66 L88,58 L87,50 L90,40Z" fill="url(#skinG)" />
-
-          {/* Legs skin base */}
-          <path d="M44,78 C42,82 39,90 38,98 C36,108 37,118 38,128 L38,140 L40,152 L42,158 L48,158 L50,152 L52,140 C54,130 55,118 55,108 L56,98 C56,90 54,82 52,78 L44,78Z" fill="url(#skinG)" />
-          <path d="M76,78 C78,82 81,90 82,98 C84,108 83,118 82,128 L82,140 L80,152 L78,158 L72,158 L70,152 L68,140 C66,130 65,118 65,108 L64,98 C64,90 66,82 68,78 L76,78Z" fill="url(#skinG)" />
-
-          {/* Hands */}
-          <ellipse cx="26" cy="91" rx="3" ry="4" fill="url(#skinG)" />
-          <ellipse cx="94" cy="91" rx="3" ry="4" fill="url(#skinG)" />
-
-          {/* Feet */}
-          <ellipse cx="45" cy="160" rx="5" ry="2.5" fill="url(#skinG)" />
-          <ellipse cx="75" cy="160" rx="5" ry="2.5" fill="url(#skinG)" />
-        </g>
-
-        {/* ── LINEA ALBA (center line for front) ─────── */}
-        {isFront && (
-          <line x1="60" y1="30" x2="60" y2="78" stroke="#8a3028" strokeWidth=".4" opacity=".5" />
-        )}
-
-        {/* ── SPINE (back view) ──────────────────────── */}
-        {!isFront && (
-          <g opacity=".3">
-            <line x1="58" y1="22" x2="58" y2="74" stroke="#6a4a3a" strokeWidth=".6" />
-            {[26,30,34,38,42,46,50,54,58,62,66,70].map(y => (
-              <ellipse key={y} cx="58" cy={y} rx="2" ry="1" fill="none" stroke="#6a4a3a" strokeWidth=".3" />
-            ))}
-          </g>
-        )}
-
-        {/* ── MUSCLE ZONES (interactive) ─────────────── */}
-        {muscles.map((m) => {
-          const val = soreness[m.group] || 0;
-          const inf = getInflammationStyle(val);
-          const isHov = hovered === m.id;
-          const isSel = selected === m.group;
-          const highlight = isHov || isSel;
-          // Only ONE tooltip per group: either the hovered zone or the primary zone when selected
-          const isPrimary = primaryZoneForGroup.get(m.group) === m.id;
-          const showTooltip = isHov || (isSel && isPrimary && hovered !== m.id && !muscles.some(z => z.group === m.group && z.id === hovered));
-
-          return (
-            <g key={m.id}
-              onClick={(e) => handleTap(m, e)}
-              onMouseEnter={() => setHovered(m.id)}
-              onMouseLeave={() => setHovered(null)}
-              className="cursor-pointer">
-
-              {/* Inflammation glow behind muscle */}
-              {val >= 2 && (
-                <path d={m.d} fill={inf.fill}
-                  filter={val >= 4 ? 'url(#glow4)' : val >= 3 ? 'url(#glow3)' : 'url(#glow2)'}
-                  opacity=".5" />
-              )}
-
-              {/* Muscle body with 3D gradient */}
-              <path
-                d={m.d}
-                fill={`url(#mg_${m.id})`}
-                stroke={highlight ? '#fff' : val >= 2 ? inf.stroke : '#8a302866'}
-                strokeWidth={highlight ? '.8' : '.3'}
-                filter="url(#muscle3d)"
-                opacity={highlight ? 1 : .92}
-                className="transition-all duration-200"
-              />
-
-              {/* Vein overlay on arms */}
-              {(m.group === 'biceps' || m.group === 'forearms' || m.group === 'triceps') && val === 0 && (
-                <path d={m.d} fill="url(#veins)" opacity=".3" />
-              )}
-
-              {/* Hover highlight shimmer */}
-              {highlight && (
-                <path d={m.d} fill="rgba(255,255,255,.12)" />
-              )}
-
-              {/* Muscle fiber direction lines — subtle anatomy detail */}
-              {!highlight && val === 0 && (
-                <path d={m.d} fill="url(#fiberPattern)" opacity=".08" />
-              )}
-
-              {/* Pulsing pain indicator */}
-              {val >= 2 && (
-                <circle cx={m.cx} cy={m.cy} r="1.5" fill={inf.stroke} opacity=".7">
-                  <animate attributeName="r" values="1.5;4;1.5"
-                    dur={val >= 4 ? '0.6s' : val >= 3 ? '1s' : '1.8s'} repeatCount="indefinite" />
-                  <animate attributeName="opacity" values=".7;.1;.7"
-                    dur={val >= 4 ? '0.6s' : val >= 3 ? '1s' : '1.8s'} repeatCount="indefinite" />
-                </circle>
-              )}
-
-              {/* Tooltip — only ONE per group */}
-              {showTooltip && (
-                <g>
-                  <line x1={m.cx} y1={m.cy} x2={m.cx} y2={m.cy - 6} stroke={inf.stroke} strokeWidth=".3" opacity=".5" />
-                  <rect x={m.cx - 14} y={m.cy - 13} width="28" height="7" rx="2"
-                    fill="rgba(6,8,16,.95)" stroke={inf.stroke} strokeWidth=".4" />
-                  <text x={m.cx} y={m.cy - 8} textAnchor="middle" fill={val > 0 ? inf.stroke : '#00f0b5'}
-                    fontSize="3.2" fontWeight="700" fontFamily="Outfit, sans-serif">
-                    {getMuscleLabel(m)}
-                  </text>
-                </g>
-              )}
-            </g>
-          );
-        })}
-
-        {/* ── TENDON HIGHLIGHTS ────────────────────────── */}
-        {isFront && (
-          <g opacity=".25">
-            {/* Clavicle line */}
-            <path d="M44,28 C48,27 52,27 60,27 C68,27 72,27 76,28" fill="none" stroke="#f0e8e0" strokeWidth=".5" />
-            {/* Pec separation */}
-            <path d="M60,30 L60,46" stroke="#f0e8e0" strokeWidth=".3" />
-            {/* Ab tendinous inscriptions */}
-            <line x1="54" y1="48" x2="66" y2="48" stroke="#f0e8e0" strokeWidth=".3" />
-            <line x1="54" y1="54" x2="66" y2="54" stroke="#f0e8e0" strokeWidth=".3" />
-            <line x1="55" y1="60" x2="65" y2="60" stroke="#f0e8e0" strokeWidth=".3" />
-            <line x1="55" y1="66" x2="65" y2="66" stroke="#f0e8e0" strokeWidth=".3" />
-            {/* Iliac crest (V-lines) */}
-            <path d="M48,68 L54,76" stroke="#f0e8e0" strokeWidth=".3" />
-            <path d="M72,68 L66,76" stroke="#f0e8e0" strokeWidth=".3" />
-            {/* Knee cap outlines */}
-            <ellipse cx="47" cy="117" rx="3" ry="2.5" fill="none" stroke="#d8ccc0" strokeWidth=".3" />
-            <ellipse cx="73" cy="117" rx="3" ry="2.5" fill="none" stroke="#d8ccc0" strokeWidth=".3" />
-          </g>
-        )}
-
-        {/* ── MUSCLE SEPARATION GROOVES ─────────────── */}
-        <g stroke="#5a2018" strokeWidth=".4" fill="none" opacity=".3">
-          {isFront ? (
-            <>
-              {/* Delt-bicep groove */}
-              <path d="M30,40 C31,41 32,42 33,42" />
-              <path d="M90,40 C89,41 88,42 87,42" />
-              {/* Pec-delt groove */}
-              <path d="M44,30 C42,32 38,36 35,38" />
-              <path d="M76,30 C78,32 82,36 85,38" />
-              {/* Quad inner/outer split */}
-              <path d="M47,82 C48,90 48,100 47,110" />
-              <path d="M73,82 C72,90 72,100 73,110" />
-              {/* Bicep-forearm crease */}
-              <path d="M26,62 C28,63 30,63 32,62" />
-              <path d="M88,62 C90,63 92,63 94,62" />
-            </>
-          ) : (
-            <>
-              {/* Lat-tricep groove */}
-              <path d="M34,40 C35,42 36,44 38,44" />
-              <path d="M82,40 C81,42 80,44 78,44" />
-              {/* Glute crease */}
-              <path d="M44,88 C48,90 52,90 58,89" />
-              <path d="M72,88 C68,90 64,90 58,89" />
-              {/* Ham-calf groove */}
-              <path d="M40,118 C42,120 44,120 46,118" />
-              <path d="M76,118 C74,120 72,120 70,118" />
-            </>
+      {/* Tooltip */}
+      {tooltip && (
+        <div className="absolute z-20 flex flex-col items-center pointer-events-none"
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -100%)' }}>
+          <div className="px-3 py-1 rounded-md text-[11px] font-bold whitespace-nowrap"
+            style={{ background: 'rgba(10,255,190,.1)', border: '1px solid rgba(10,255,190,.3)', color: '#0affc0', backdropFilter: 'blur(5px)' }}>
+            {tooltip.name}
+          </div>
+          {tooltip.sub && (
+            <div className="px-2 py-0.5 rounded text-[9px] font-semibold mt-0.5 whitespace-nowrap"
+              style={{ background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.1)', color: '#aaa' }}>
+              {tooltip.sub}
+            </div>
           )}
-        </g>
+        </div>
+      )}
 
-        {/* ── NAVEL ──────────────────────────────────── */}
-        {isFront && (
-          <ellipse cx="60" cy="70" rx="1" ry="1.2" fill="#8a3028" opacity=".4" />
-        )}
+      <style>{`
+        .mh{cursor:pointer;transition:filter .12s,stroke-width .1s,stroke .1s;stroke:transparent;stroke-width:0}
+        .mh:hover{filter:brightness(1.22)!important;stroke:rgba(255,255,255,.45);stroke-width:1.3}
+        .mh.sel{filter:brightness(1.15);stroke:rgba(255,255,255,.55);stroke-width:1.5}
+        .mh.i1{filter:saturate(.5) hue-rotate(85deg)!important}
+        .mh.i2{filter:saturate(.7) hue-rotate(35deg)!important}
+        .mh.i3{filter:saturate(1.1) hue-rotate(-8deg) brightness(1.1)!important}
+        .mh.i4{filter:saturate(1.4) hue-rotate(-20deg) brightness(1.15)!important}
+        .mh.sel:hover{filter:brightness(1.3)!important;stroke:rgba(255,255,255,.7);stroke-width:2}
+      `}</style>
 
-        {/* ── NIPPLES ────────────────────────────────── */}
-        {isFront && (
-          <>
-            <circle cx="49" cy="40" r=".7" fill="#a06050" opacity=".5" />
-            <circle cx="71" cy="40" r=".7" fill="#a06050" opacity=".5" />
-          </>
-        )}
+      {isFront ? (
+        /* ════════════ FRONT VIEW ════════════ */
+        <svg ref={svgRef} viewBox="0 0 440 700" className="w-full" style={{ maxHeight: 560 }}>
+          <defs>
+            <radialGradient id="sk" cx="50%" cy="40%"><stop offset="0%" stopColor="#ecd0b0"/><stop offset="70%" stopColor="#d4aa82"/><stop offset="100%" stopColor="#c09470"/></radialGradient>
+            <radialGradient id="skD" cx="50%" cy="50%"><stop offset="0%" stopColor="#dfc0a0"/><stop offset="100%" stopColor="#c09470"/></radialGradient>
+            <radialGradient id="rm" cx="45%" cy="35%"><stop offset="0%" stopColor="#e89888"/><stop offset="55%" stopColor="#d07868"/><stop offset="100%" stopColor="#a85448"/></radialGradient>
+            <radialGradient id="rmR" cx="55%" cy="35%"><stop offset="0%" stopColor="#e89888"/><stop offset="55%" stopColor="#d07868"/><stop offset="100%" stopColor="#a85448"/></radialGradient>
+            <radialGradient id="rm2" cx="50%" cy="30%"><stop offset="0%" stopColor="#e89080"/><stop offset="50%" stopColor="#cc7060"/><stop offset="100%" stopColor="#a04840"/></radialGradient>
+            <radialGradient id="rDelt" cx="40%" cy="30%"><stop offset="0%" stopColor="#f8d888"/><stop offset="50%" stopColor="#e4bc60"/><stop offset="100%" stopColor="#c49838"/></radialGradient>
+            <radialGradient id="rDeltR" cx="60%" cy="30%"><stop offset="0%" stopColor="#f8d888"/><stop offset="50%" stopColor="#e4bc60"/><stop offset="100%" stopColor="#c49838"/></radialGradient>
+            <radialGradient id="rPecU" cx="40%" cy="35%"><stop offset="0%" stopColor="#e89088"/><stop offset="50%" stopColor="#d47468"/><stop offset="100%" stopColor="#b45848"/></radialGradient>
+            <radialGradient id="rPecUR" cx="60%" cy="35%"><stop offset="0%" stopColor="#e89088"/><stop offset="50%" stopColor="#d47468"/><stop offset="100%" stopColor="#b45848"/></radialGradient>
+            <radialGradient id="rPecL" cx="45%" cy="40%"><stop offset="0%" stopColor="#e08478"/><stop offset="50%" stopColor="#c86858"/><stop offset="100%" stopColor="#a84840"/></radialGradient>
+            <radialGradient id="rPecLR" cx="55%" cy="40%"><stop offset="0%" stopColor="#e08478"/><stop offset="50%" stopColor="#c86858"/><stop offset="100%" stopColor="#a84840"/></radialGradient>
+            <radialGradient id="rBic" cx="45%" cy="35%"><stop offset="0%" stopColor="#e89080"/><stop offset="50%" stopColor="#d07060"/><stop offset="100%" stopColor="#a84a40"/></radialGradient>
+            <radialGradient id="rAbs" cx="50%" cy="35%"><stop offset="0%" stopColor="#e4b898"/><stop offset="50%" stopColor="#d0a080"/><stop offset="100%" stopColor="#b88868"/></radialGradient>
+            <radialGradient id="rObl" cx="35%" cy="35%"><stop offset="0%" stopColor="#da9880"/><stop offset="50%" stopColor="#c48068"/><stop offset="100%" stopColor="#a06850"/></radialGradient>
+            <radialGradient id="rOblR" cx="65%" cy="35%"><stop offset="0%" stopColor="#da9880"/><stop offset="50%" stopColor="#c48068"/><stop offset="100%" stopColor="#a06850"/></radialGradient>
+            <radialGradient id="rQ" cx="45%" cy="30%"><stop offset="0%" stopColor="#e08878"/><stop offset="50%" stopColor="#cc7060"/><stop offset="100%" stopColor="#a85040"/></radialGradient>
+            <radialGradient id="rFA" cx="50%" cy="30%"><stop offset="0%" stopColor="#d8b498"/><stop offset="50%" stopColor="#c09878"/><stop offset="100%" stopColor="#a08060"/></radialGradient>
+            <radialGradient id="rSer" cx="40%" cy="40%"><stop offset="0%" stopColor="#d88878"/><stop offset="50%" stopColor="#c07060"/><stop offset="100%" stopColor="#985848"/></radialGradient>
+            <radialGradient id="rTib" cx="50%" cy="25%"><stop offset="0%" stopColor="#d4aa90"/><stop offset="50%" stopColor="#c09478"/><stop offset="100%" stopColor="#a07858"/></radialGradient>
+            <radialGradient id="rHip" cx="50%" cy="40%"><stop offset="0%" stopColor="#d0a488"/><stop offset="50%" stopColor="#b88c70"/><stop offset="100%" stopColor="#987458"/></radialGradient>
+            <radialGradient id="rAdd" cx="50%" cy="35%"><stop offset="0%" stopColor="#d09880"/><stop offset="50%" stopColor="#b88068"/><stop offset="100%" stopColor="#986850"/></radialGradient>
+            <filter id="s1"><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b"/><feOffset dy="2" result="o"/><feFlood floodColor="#000" floodOpacity=".3"/><feComposite in2="o" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="s2"><feGaussianBlur in="SourceAlpha" stdDeviation="2" result="b"/><feOffset dy="1.5" result="o"/><feFlood floodColor="#000" floodOpacity=".2"/><feComposite in2="o" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
 
-      </svg>
+          {/* ── BODY SILHOUETTE / SKIN ── */}
+          <ellipse cx="220" cy="56" rx="40" ry="46" fill="url(#sk)"/>
+          <ellipse cx="211.5" cy="14" rx="1.5" ry="2.5" fill="#c9a088" transform="translate(0,40)"/>
+          <ellipse cx="228.5" cy="14" rx="1.5" ry="2.5" fill="#c9a088" transform="translate(0,40)"/>
+          <rect x="204" y="98" width="32" height="22" rx="10" fill="url(#skD)"/>
+          <path d="M158 120 Q220 108 282 120 L290 170 Q292 220 288 270 L278 310 Q220 325 162 310 L152 270 Q148 220 150 170Z" fill="url(#skD)" opacity=".55"/>
+          <path d="M165 300 Q220 315 275 300 L272 340 Q220 355 168 340Z" fill="url(#skD)" opacity=".4"/>
+          <ellipse cx="90" cy="365" rx="14" ry="17" fill="url(#sk)" opacity=".7"/>
+          <ellipse cx="350" cy="365" rx="14" ry="17" fill="url(#sk)" opacity=".7"/>
+          <ellipse cx="158" cy="638" rx="20" ry="8" fill="url(#skD)" opacity=".4"/>
+          <ellipse cx="282" cy="638" rx="20" ry="8" fill="url(#skD)" opacity=".4"/>
+
+          {/* ── DELTOIDS ── */}
+          <path d="M160 118 Q150 116 138 126 Q122 118 112 140 Q108 155 114 168 L140 164 Q148 144 155 128Z" fill="url(#rDelt)" filter="url(#s1)" className={mp('deltoid')} data-m="deltoid" data-h="Srednja glava|Lateral deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M155 120 L170 118 L168 148 L152 150 Q148 136 155 120Z" fill="url(#rDelt)" filter="url(#s2)" className={mp('deltoid')} data-m="deltoid" data-h="Prednja glava|Anterior deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M280 118 Q290 116 302 126 Q318 118 328 140 Q332 155 326 168 L300 164 Q292 144 285 128Z" fill="url(#rDeltR)" filter="url(#s1)" className={mp('deltoid')} data-m="deltoid" data-h="Srednja glava|Lateral deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M285 120 L270 118 L272 148 L288 150 Q292 136 285 120Z" fill="url(#rDeltR)" filter="url(#s2)" className={mp('deltoid')} data-m="deltoid" data-h="Prednja glava|Anterior deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── PECTORALIS ── */}
+          <path d="M162 122 L210 118 L210 148 Q200 158 182 162 L160 160 Q148 150 148 140 Q148 130 162 122Z" fill="url(#rPecU)" filter="url(#s1)" className={mp('pectoralis')} data-m="pectoralis" data-h="Gornja prsa|Pars clavicularis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M158 162 L182 164 Q200 160 210 150 L210 178 Q196 188 172 186 L152 180 Q146 172 158 162Z" fill="url(#rPecL)" filter="url(#s1)" className={mp('pectoralis')} data-m="pectoralis" data-h="Donja prsa|Pars sternocostalis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M278 122 L230 118 L230 148 Q240 158 258 162 L280 160 Q292 150 292 140 Q292 130 278 122Z" fill="url(#rPecUR)" filter="url(#s1)" className={mp('pectoralis')} data-m="pectoralis" data-h="Gornja prsa|Pars clavicularis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M282 162 L258 164 Q240 160 230 150 L230 178 Q244 188 268 186 L288 180 Q294 172 282 162Z" fill="url(#rPecLR)" filter="url(#s1)" className={mp('pectoralis')} data-m="pectoralis" data-h="Donja prsa|Pars sternocostalis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          {/* Pec highlights */}
+          <ellipse cx="180" cy="142" rx="14" ry="8" fill="#f0a898" opacity=".18" className="pointer-events-none"/>
+          <ellipse cx="260" cy="142" rx="14" ry="8" fill="#f0a898" opacity=".18" className="pointer-events-none"/>
+          <line x1="172" y1="126" x2="155" y2="156" stroke="#884040" strokeWidth=".6" opacity=".2" className="pointer-events-none"/>
+          <line x1="188" y1="124" x2="165" y2="160" stroke="#884040" strokeWidth=".6" opacity=".18" className="pointer-events-none"/>
+          <line x1="268" y1="126" x2="285" y2="156" stroke="#884040" strokeWidth=".6" opacity=".2" className="pointer-events-none"/>
+
+          {/* ── SERRATUS ── */}
+          <path d="M142 168 L158 164 L156 210 L140 206Z" fill="url(#rSer)" className={mp('serratus')} data-m="serratus" data-h="Serratus anterior|Serratus anterior" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M298 168 L282 164 L284 210 L300 206Z" fill="url(#rSer)" className={mp('serratus')} data-m="serratus" data-h="Serratus anterior|Serratus anterior" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="142" y1="178" x2="158" y2="175" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+          <line x1="142" y1="188" x2="158" y2="185" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+          <line x1="142" y1="198" x2="158" y2="195" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+          <line x1="298" y1="178" x2="282" y2="175" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+          <line x1="298" y1="188" x2="282" y2="185" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+          <line x1="298" y1="198" x2="282" y2="195" stroke="#784030" strokeWidth=".7" opacity=".3" className="pointer-events-none"/>
+
+          {/* ── BICEPS ── */}
+          <path d="M114 170 Q110 190 110 214 Q112 232 116 240 L128 240 Q130 225 130 210 Q130 190 128 170Z" fill="url(#rBic)" filter="url(#s1)" className={mp('biceps')} data-m="biceps" data-h="Duga glava|Caput longum" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M130 170 Q134 185 136 210 Q136 228 134 240 L144 240 Q147 222 146 205 Q145 185 142 170Z" fill="url(#rBic)" filter="url(#s2)" className={mp('biceps')} data-m="biceps" data-h="Kratka glava|Caput breve" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M112 242 Q110 252 110 260 L144 260 Q146 252 146 242Z" fill="url(#rm2)" className={mp('biceps')} data-m="biceps" data-h="Brahijalis|Brachialis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="128" cy="206" rx="8" ry="16" fill="#f0a090" opacity=".2" className="pointer-events-none"/>
+          <path d="M326 170 Q330 190 330 214 Q328 232 324 240 L312 240 Q310 225 310 210 Q310 190 312 170Z" fill="url(#rBic)" filter="url(#s1)" className={mp('biceps')} data-m="biceps" data-h="Duga glava|Caput longum" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M310 170 Q306 185 304 210 Q304 228 306 240 L296 240 Q293 222 294 205 Q295 185 298 170Z" fill="url(#rBic)" filter="url(#s2)" className={mp('biceps')} data-m="biceps" data-h="Kratka glava|Caput breve" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M328 242 Q330 252 330 260 L296 260 Q294 252 294 242Z" fill="url(#rm2)" className={mp('biceps')} data-m="biceps" data-h="Brahijalis|Brachialis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="312" cy="206" rx="8" ry="16" fill="#f0a090" opacity=".2" className="pointer-events-none"/>
+
+          {/* ── FOREARMS ── */}
+          <path d="M110 264 Q104 298 98 338 Q96 352 94 362 L116 365 Q120 332 126 298 Q128 280 130 264Z" fill="url(#rFA)" filter="url(#s2)" className={mp('forearm')} data-m="forearm" data-h="Fleksori|Flexor carpi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M330 264 Q336 298 342 338 Q344 352 346 362 L324 365 Q320 332 314 298 Q312 280 310 264Z" fill="url(#rFA)" filter="url(#s2)" className={mp('forearm')} data-m="forearm" data-h="Fleksori|Flexor carpi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── ABS ── */}
+          <rect x="210" y="186" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Gornji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="210" y="209" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Srednji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="210" y="232" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Donji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="210" y="255" width="20" height="17" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Najdonji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="188" y="186" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Gornji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="188" y="209" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Srednji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="188" y="232" width="20" height="19" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Donji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <rect x="188" y="255" width="20" height="17" rx="5" fill="url(#rAbs)" className={mp('abs')} data-m="abs" data-h="Najdonji abs|Rectus abdominis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="220" y1="184" x2="220" y2="275" stroke="#805838" strokeWidth="1.2" opacity=".3" className="pointer-events-none"/>
+
+          {/* ── OBLIQUES ── */}
+          <path d="M160 185 L186 187 L186 272 L155 264 Q148 226 160 185Z" fill="url(#rObl)" filter="url(#s2)" className={mp('obliques')} data-m="obliques" data-h="Vanjski kosi|Obliquus externus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M280 185 L254 187 L254 272 L285 264 Q292 226 280 185Z" fill="url(#rOblR)" filter="url(#s2)" className={mp('obliques')} data-m="obliques" data-h="Vanjski kosi|Obliquus externus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="164" y1="200" x2="184" y2="215" stroke="#704030" strokeWidth=".5" opacity=".2" className="pointer-events-none"/>
+          <line x1="162" y1="218" x2="184" y2="235" stroke="#704030" strokeWidth=".5" opacity=".2" className="pointer-events-none"/>
+          <line x1="160" y1="238" x2="184" y2="255" stroke="#704030" strokeWidth=".5" opacity=".2" className="pointer-events-none"/>
+
+          {/* ── HIP FLEXORS ── */}
+          <path d="M162 275 L190 272 L188 300 L158 296Z" fill="url(#rHip)" className={mp('hip_flexors')} data-m="hip_flexors" data-h="Iliopsoas|Psoas + Iliacus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M278 275 L250 272 L252 300 L282 296Z" fill="url(#rHip)" className={mp('hip_flexors')} data-m="hip_flexors" data-h="Iliopsoas|Psoas + Iliacus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── QUADRICEPS ── */}
+          <path d="M158 310 Q152 355 148 405 Q146 430 145 455 L168 455 Q170 425 172 395 Q174 350 175 310Z" fill="url(#rQ)" filter="url(#s1)" className={mp('quadriceps')} data-m="quadriceps" data-h="Vastus lateralis|M. vastus lateralis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M177 308 Q175 350 173 400 Q172 425 170 455 L190 455 Q192 425 193 400 Q194 350 195 308Z" fill="url(#rQ)" filter="url(#s1)" className={mp('quadriceps')} data-m="quadriceps" data-h="Rectus femoris|M. rectus femoris" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M195 310 Q196 360 196 410 L196 455 L192 455 Q193 425 193 400 Q194 355 195 310Z" fill="url(#rQ)" className={mp('quadriceps')} data-m="quadriceps" data-h="VMO|M. vastus medialis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="190" cy="440" rx="7" ry="13" fill="#c86858" opacity=".25" className="pointer-events-none"/>
+          <path d="M175 312 Q173 360 171 420" stroke="#703828" strokeWidth=".8" fill="none" opacity=".22" className="pointer-events-none"/>
+          <path d="M194 312 Q194 360 195 420" stroke="#703828" strokeWidth=".7" fill="none" opacity=".2" className="pointer-events-none"/>
+          <ellipse cx="170" cy="370" rx="8" ry="28" fill="#e89080" opacity=".12" className="pointer-events-none"/>
+
+          <path d="M282 310 Q288 355 292 405 Q294 430 295 455 L272 455 Q270 425 268 395 Q266 350 265 310Z" fill="url(#rQ)" filter="url(#s1)" className={mp('quadriceps')} data-m="quadriceps" data-h="Vastus lateralis|M. vastus lateralis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M263 308 Q265 350 267 400 Q268 425 270 455 L250 455 Q248 425 247 400 Q246 350 245 308Z" fill="url(#rQ)" filter="url(#s1)" className={mp('quadriceps')} data-m="quadriceps" data-h="Rectus femoris|M. rectus femoris" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M245 310 Q244 360 244 410 L244 455 L248 455 Q247 425 247 400 Q246 355 245 310Z" fill="url(#rQ)" className={mp('quadriceps')} data-m="quadriceps" data-h="VMO|M. vastus medialis" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="250" cy="440" rx="7" ry="13" fill="#c86858" opacity=".25" className="pointer-events-none"/>
+          <path d="M265 312 Q267 360 269 420" stroke="#703828" strokeWidth=".8" fill="none" opacity=".22" className="pointer-events-none"/>
+          <path d="M246 312 Q246 360 245 420" stroke="#703828" strokeWidth=".7" fill="none" opacity=".2" className="pointer-events-none"/>
+          <ellipse cx="270" cy="370" rx="8" ry="28" fill="#e89080" opacity=".12" className="pointer-events-none"/>
+
+          {/* ── ADDUCTORS ── */}
+          <path d="M196 306 L212 304 L208 405 L194 403Z" fill="url(#rAdd)" className={mp('adductors')} data-m="adductors" data-h="Adductor longus|M. adductor longus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M244 306 L228 304 L232 405 L246 403Z" fill="url(#rAdd)" className={mp('adductors')} data-m="adductors" data-h="Adductor longus|M. adductor longus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── TIBIALIS ── */}
+          <path d="M146 465 Q144 505 143 560 Q142 590 142 615 L170 615 Q172 590 173 560 Q174 510 176 465Z" fill="url(#rTib)" className={mp('tibialis')} data-m="tibialis" data-h="Tibialis anterior|M. tibialis anterior" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M294 465 Q296 505 297 560 Q298 590 298 615 L270 615 Q268 590 267 560 Q266 510 264 465Z" fill="url(#rTib)" className={mp('tibialis')} data-m="tibialis" data-h="Tibialis anterior|M. tibialis anterior" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── NECK ── */}
+          <path d="M204 98 L212 96 L212 120 L204 122 Q200 110 204 98Z" fill="url(#rm)" opacity=".5" className={mp('neck')} data-m="neck" data-h="SCM|Sternocleidomastoideus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M236 98 L228 96 L228 120 L236 122 Q240 110 236 98Z" fill="url(#rmR)" opacity=".5" className={mp('neck')} data-m="neck" data-h="SCM|Sternocleidomastoideus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+        </svg>
+      ) : (
+        /* ════════════ BACK VIEW ════════════ */
+        <svg ref={svgRef} viewBox="0 0 440 700" className="w-full" style={{ maxHeight: 560 }}>
+          <defs>
+            <radialGradient id="bsk" cx="50%" cy="40%"><stop offset="0%" stopColor="#ecd0b0"/><stop offset="70%" stopColor="#d4aa82"/><stop offset="100%" stopColor="#c09470"/></radialGradient>
+            <radialGradient id="bskD" cx="50%" cy="50%"><stop offset="0%" stopColor="#dfc0a0"/><stop offset="100%" stopColor="#c09470"/></radialGradient>
+            <radialGradient id="brDelt" cx="40%" cy="30%"><stop offset="0%" stopColor="#f8d888"/><stop offset="50%" stopColor="#e4bc60"/><stop offset="100%" stopColor="#c49838"/></radialGradient>
+            <radialGradient id="brDeltR" cx="60%" cy="30%"><stop offset="0%" stopColor="#f8d888"/><stop offset="50%" stopColor="#e4bc60"/><stop offset="100%" stopColor="#c49838"/></radialGradient>
+            <radialGradient id="brFA" cx="50%" cy="30%"><stop offset="0%" stopColor="#d8b498"/><stop offset="50%" stopColor="#c09878"/><stop offset="100%" stopColor="#a08060"/></radialGradient>
+            <radialGradient id="brTrU" cx="50%" cy="30%"><stop offset="0%" stopColor="#e08878"/><stop offset="50%" stopColor="#cc6e60"/><stop offset="100%" stopColor="#a85040"/></radialGradient>
+            <radialGradient id="brTrM" cx="50%" cy="35%"><stop offset="0%" stopColor="#d88070"/><stop offset="50%" stopColor="#c06858"/><stop offset="100%" stopColor="#984838"/></radialGradient>
+            <radialGradient id="brTrL" cx="50%" cy="40%"><stop offset="0%" stopColor="#d07868"/><stop offset="50%" stopColor="#b86050"/><stop offset="100%" stopColor="#904038"/></radialGradient>
+            <radialGradient id="brRh" cx="50%" cy="35%"><stop offset="0%" stopColor="#d88070"/><stop offset="50%" stopColor="#c06858"/><stop offset="100%" stopColor="#984838"/></radialGradient>
+            <radialGradient id="brLat" cx="35%" cy="35%"><stop offset="0%" stopColor="#dc8070"/><stop offset="50%" stopColor="#c06050"/><stop offset="100%" stopColor="#984038"/></radialGradient>
+            <radialGradient id="brLatR" cx="65%" cy="35%"><stop offset="0%" stopColor="#dc8070"/><stop offset="50%" stopColor="#c06050"/><stop offset="100%" stopColor="#984038"/></radialGradient>
+            <radialGradient id="brTri" cx="45%" cy="35%"><stop offset="0%" stopColor="#e08878"/><stop offset="50%" stopColor="#c86858"/><stop offset="100%" stopColor="#a04838"/></radialGradient>
+            <radialGradient id="brRC" cx="50%" cy="40%"><stop offset="0%" stopColor="#d47868"/><stop offset="50%" stopColor="#bc6050"/><stop offset="100%" stopColor="#984838"/></radialGradient>
+            <radialGradient id="brEr" cx="50%" cy="30%"><stop offset="0%" stopColor="#d09078"/><stop offset="50%" stopColor="#b87860"/><stop offset="100%" stopColor="#986048"/></radialGradient>
+            <radialGradient id="brGMax" cx="45%" cy="35%"><stop offset="0%" stopColor="#e08878"/><stop offset="50%" stopColor="#cc6e60"/><stop offset="100%" stopColor="#a84e42"/></radialGradient>
+            <radialGradient id="brGMed" cx="50%" cy="30%"><stop offset="0%" stopColor="#d88070"/><stop offset="50%" stopColor="#c46858"/><stop offset="100%" stopColor="#a04840"/></radialGradient>
+            <radialGradient id="brHam" cx="45%" cy="30%"><stop offset="0%" stopColor="#dc8070"/><stop offset="50%" stopColor="#c46858"/><stop offset="100%" stopColor="#a04838"/></radialGradient>
+            <radialGradient id="brHamI" cx="55%" cy="30%"><stop offset="0%" stopColor="#d47868"/><stop offset="50%" stopColor="#b86050"/><stop offset="100%" stopColor="#984038"/></radialGradient>
+            <radialGradient id="brCM" cx="42%" cy="30%"><stop offset="0%" stopColor="#dc8878"/><stop offset="50%" stopColor="#c86e60"/><stop offset="100%" stopColor="#a85248"/></radialGradient>
+            <radialGradient id="brCL" cx="55%" cy="30%"><stop offset="0%" stopColor="#d48070"/><stop offset="50%" stopColor="#c06858"/><stop offset="100%" stopColor="#a04a40"/></radialGradient>
+            <radialGradient id="brSol" cx="50%" cy="30%"><stop offset="0%" stopColor="#c87868"/><stop offset="50%" stopColor="#b06050"/><stop offset="100%" stopColor="#904840"/></radialGradient>
+            <filter id="bs1"><feGaussianBlur in="SourceAlpha" stdDeviation="3" result="b"/><feOffset dy="2" result="o"/><feFlood floodColor="#000" floodOpacity=".3"/><feComposite in2="o" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+            <filter id="bs2"><feGaussianBlur in="SourceAlpha" stdDeviation="2" result="b"/><feOffset dy="1.5" result="o"/><feFlood floodColor="#000" floodOpacity=".2"/><feComposite in2="o" operator="in"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+
+          {/* ── Skin base ── */}
+          <ellipse cx="220" cy="56" rx="40" ry="46" fill="url(#bsk)"/>
+          <rect x="204" y="98" width="32" height="22" rx="10" fill="url(#bskD)"/>
+          <path d="M170 248 Q220 258 270 248 L272 280 Q220 290 168 280Z" fill="url(#bskD)" opacity=".35"/>
+          <ellipse cx="92" cy="375" rx="14" ry="17" fill="url(#bsk)" opacity=".65"/>
+          <ellipse cx="348" cy="375" rx="14" ry="17" fill="url(#bsk)" opacity=".65"/>
+
+          {/* ── TRAPEZIUS ── */}
+          <path d="M184 100 L220 94 L256 100 L270 115 L220 106 L170 115Z" fill="url(#brTrU)" filter="url(#bs1)" className={mp('trapezius')} data-m="trapezius" data-h="Gornja vlakna|Pars descendens" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M170 117 L220 108 L270 117 L285 138 L220 126 L155 138Z" fill="url(#brTrM)" filter="url(#bs1)" className={mp('trapezius')} data-m="trapezius" data-h="Srednja vlakna|Pars transversa" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M185 155 L220 148 L255 155 L240 180 L220 182 L200 180Z" fill="url(#brTrL)" className={mp('trapezius')} data-m="trapezius" data-h="Donja vlakna|Pars ascendens" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── REAR DELTS ── */}
+          <path d="M154 122 Q132 120 118 148 Q114 162 120 174 L150 168 Q156 146 155 126Z" fill="url(#brDelt)" filter="url(#bs1)" className={mp('deltoid')} data-m="deltoid" data-h="Stražnja glava|Posterior deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M286 122 Q308 120 322 148 Q326 162 320 174 L290 168 Q284 146 285 126Z" fill="url(#brDeltR)" filter="url(#bs1)" className={mp('deltoid')} data-m="deltoid" data-h="Stražnja glava|Posterior deltoid" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── ROTATOR CUFF ── */}
+          <path d="M156 136 L184 132 L186 168 L154 172Z" fill="url(#brRC)" className={mp('rotator_cuff')} data-m="rotator_cuff" data-h="Infraspinatus|M. infraspinatus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M284 136 L256 132 L254 168 L286 172Z" fill="url(#brRC)" className={mp('rotator_cuff')} data-m="rotator_cuff" data-h="Infraspinatus|M. infraspinatus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── RHOMBOIDS ── */}
+          <path d="M188 126 L218 120 L218 165 L188 170Z" fill="url(#brRh)" className={mp('rhomboids')} data-m="rhomboids" data-h="Rhomboid major|Rhomboideus major" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M252 126 L222 120 L222 165 L252 170Z" fill="url(#brRh)" className={mp('rhomboids')} data-m="rhomboids" data-h="Rhomboid major|Rhomboideus major" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── LATS ── */}
+          <path d="M148 175 L186 170 L190 242 Q178 255 162 258 L146 252 Q138 215 148 175Z" fill="url(#brLat)" filter="url(#bs1)" className={mp('latissimus')} data-m="latissimus" data-h="Široki leđni|Latissimus dorsi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M292 175 L254 170 L250 242 Q262 255 278 258 L294 252 Q302 215 292 175Z" fill="url(#brLatR)" filter="url(#bs1)" className={mp('latissimus')} data-m="latissimus" data-h="Široki leđni|Latissimus dorsi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="154" y1="188" x2="182" y2="218" stroke="#682820" strokeWidth=".6" opacity=".2" className="pointer-events-none"/>
+          <line x1="152" y1="208" x2="180" y2="238" stroke="#682820" strokeWidth=".6" opacity=".2" className="pointer-events-none"/>
+
+          {/* ── TRICEPS ── */}
+          <path d="M120 176 Q116 198 116 222 Q118 240 122 248 L134 248 Q136 232 136 218 Q136 198 134 176Z" fill="url(#brTri)" filter="url(#bs1)" className={mp('triceps')} data-m="triceps" data-h="Lateralna glava|Caput laterale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M136 176 Q140 192 142 218 Q142 236 140 248 L152 248 Q155 230 154 212 Q153 192 150 176Z" fill="url(#brTri)" filter="url(#bs2)" className={mp('triceps')} data-m="triceps" data-h="Duga glava|Caput longum" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M126 212 Q132 200 138 212 Q132 224 126 212Z" fill="#e09080" opacity=".2" className="pointer-events-none"/>
+          <path d="M320 176 Q324 198 324 222 Q322 240 318 248 L306 248 Q304 232 304 218 Q304 198 306 176Z" fill="url(#brTri)" filter="url(#bs1)" className={mp('triceps')} data-m="triceps" data-h="Lateralna glava|Caput laterale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M304 176 Q300 192 298 218 Q298 236 300 248 L288 248 Q285 230 286 212 Q287 192 290 176Z" fill="url(#brTri)" filter="url(#bs2)" className={mp('triceps')} data-m="triceps" data-h="Duga glava|Caput longum" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M314 212 Q308 200 302 212 Q308 224 314 212Z" fill="#e09080" opacity=".2" className="pointer-events-none"/>
+
+          {/* ── FOREARMS BACK ── */}
+          <path d="M118 252 Q112 285 106 325 Q104 342 102 355 L124 358 Q128 325 134 290 Q136 272 138 252Z" fill="url(#brFA)" className={mp('forearm')} data-m="forearm" data-h="Ekstenzori|Extensor carpi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M322 252 Q328 285 334 325 Q336 342 338 355 L316 358 Q312 325 306 290 Q304 272 302 252Z" fill="url(#brFA)" className={mp('forearm')} data-m="forearm" data-h="Ekstenzori|Extensor carpi" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+
+          {/* ── ERECTOR SPINAE ── */}
+          <path d="M200 172 L218 170 L218 278 L198 274 Q196 225 200 172Z" fill="url(#brEr)" className={mp('erector_spinae')} data-m="erector_spinae" data-h="Erector spinae|Iliocostalis + Longissimus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M240 172 L222 170 L222 278 L242 274 Q244 225 240 172Z" fill="url(#brEr)" className={mp('erector_spinae')} data-m="erector_spinae" data-h="Erector spinae|Iliocostalis + Longissimus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="220" y1="170" x2="220" y2="278" stroke="#604030" strokeWidth=".8" opacity=".25" className="pointer-events-none"/>
+
+          {/* ── GLUTES ── */}
+          <path d="M162 278 Q172 270 196 266 L198 290 L168 292 Q160 286 162 278Z" fill="url(#brGMed)" filter="url(#bs2)" className={mp('glutes')} data-m="glutes" data-h="Gluteus medius|M. gluteus medius" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M168 294 L218 288 L218 338 L164 340 Q154 318 168 294Z" fill="url(#brGMax)" filter="url(#bs1)" className={mp('glutes')} data-m="glutes" data-h="Gluteus maximus|M. gluteus maximus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M278 278 Q268 270 244 266 L242 290 L272 292 Q280 286 278 278Z" fill="url(#brGMed)" filter="url(#bs2)" className={mp('glutes')} data-m="glutes" data-h="Gluteus medius|M. gluteus medius" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M272 294 L222 288 L222 338 L276 340 Q286 318 272 294Z" fill="url(#brGMax)" filter="url(#bs1)" className={mp('glutes')} data-m="glutes" data-h="Gluteus maximus|M. gluteus maximus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="220" y1="290" x2="220" y2="338" stroke="#6a2828" strokeWidth="1" opacity=".28" className="pointer-events-none"/>
+          <ellipse cx="192" cy="315" rx="12" ry="16" fill="#e89080" opacity=".12" className="pointer-events-none"/>
+          <ellipse cx="248" cy="315" rx="12" ry="16" fill="#e89080" opacity=".12" className="pointer-events-none"/>
+
+          {/* ── HAMSTRINGS ── */}
+          <path d="M158 346 L182 342 L180 462 L148 462 Q146 402 158 346Z" fill="url(#brHam)" filter="url(#bs1)" className={mp('hamstrings')} data-m="hamstrings" data-h="Biceps femoris|Caput longum + breve" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M184 342 L210 338 L206 462 L182 462Z" fill="url(#brHamI)" filter="url(#bs1)" className={mp('hamstrings')} data-m="hamstrings" data-h="Semi (ten+mem)|Semitendinosus + Semimembranosus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="182" y1="345" x2="181" y2="458" stroke="#6a2820" strokeWidth=".8" opacity=".22" className="pointer-events-none"/>
+          <path d="M282 346 L258 342 L260 462 L292 462 Q294 402 282 346Z" fill="url(#brHam)" filter="url(#bs1)" className={mp('hamstrings')} data-m="hamstrings" data-h="Biceps femoris|Caput longum + breve" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M256 342 L230 338 L234 462 L258 462Z" fill="url(#brHamI)" filter="url(#bs1)" className={mp('hamstrings')} data-m="hamstrings" data-h="Semi (ten+mem)|Semitendinosus + Semimembranosus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <line x1="258" y1="345" x2="259" y2="458" stroke="#6a2820" strokeWidth=".8" opacity=".22" className="pointer-events-none"/>
+
+          {/* ── CALVES ── */}
+          <path d="M164 468 Q160 492 160 520 Q160 545 162 562 L180 562 Q182 545 182 524 Q182 496 184 468Z" fill="url(#brCM)" filter="url(#bs2)" className={mp('calves')} data-m="calves" data-h="Gastroc medijalna|Caput mediale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M150 468 Q146 488 146 510 Q148 530 150 545 L162 545 Q162 526 162 508 Q162 488 164 468Z" fill="url(#brCL)" filter="url(#bs2)" className={mp('calves')} data-m="calves" data-h="Gastroc lateralna|Caput laterale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M150 548 Q148 572 148 600 L182 600 Q182 572 180 548Z" fill="url(#brSol)" className={mp('calves')} data-m="calves" data-h="Soleus|M. soleus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="166" cy="502" rx="9" ry="20" fill="#d88070" opacity=".18" className="pointer-events-none"/>
+          <path d="M276 468 Q280 492 280 520 Q280 545 278 562 L260 562 Q258 545 258 524 Q258 496 256 468Z" fill="url(#brCM)" filter="url(#bs2)" className={mp('calves')} data-m="calves" data-h="Gastroc medijalna|Caput mediale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M290 468 Q294 488 294 510 Q292 530 290 545 L278 545 Q278 526 278 508 Q278 488 276 468Z" fill="url(#brCL)" filter="url(#bs2)" className={mp('calves')} data-m="calves" data-h="Gastroc lateralna|Caput laterale" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <path d="M290 548 Q292 572 292 600 L258 600 Q258 572 260 548Z" fill="url(#brSol)" className={mp('calves')} data-m="calves" data-h="Soleus|M. soleus" onMouseEnter={handleEnter} onMouseLeave={handleLeave} onClick={handleClick}/>
+          <ellipse cx="274" cy="502" rx="9" ry="20" fill="#d88070" opacity=".18" className="pointer-events-none"/>
+        </svg>
+      )}
 
       {/* Side label */}
       <div className="text-center mt-1 text-[10px] text-fit-dim font-semibold tracking-wider">
-        {isFront ? (t.body?.front || 'Prednja strana') : (t.body?.back || 'Stražnja strana')} · {t.body?.ratePain || 'Klikni na mišić'}
+        {isFront ? (t.body?.front || 'Prednja strana') : (t.body?.back || 'Stražnja strana')}
       </div>
     </div>
   );
