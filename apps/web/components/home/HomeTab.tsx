@@ -8,6 +8,8 @@ import Bar from '@/components/ui/Bar';
 import Ring from '@/components/ui/Ring';
 import Lbl from '@/components/ui/Lbl';
 import { logWater, logMood, logSteps, logSleep, getToday, getWeekData, getTotalAiCost } from '@/lib/dataStore';
+import NemesisCard from '@/components/social/NemesisCard';
+import AchievementsList from '@/components/social/AchievementsList';
 import { trainers } from '@/lib/constants/trainers';
 
 export default function HomeTab() {
@@ -272,6 +274,12 @@ export default function HomeTab() {
           ))}
         </div>
       </Box>
+
+      {/* Nemesis */}
+      <NemesisCard />
+
+      {/* Achievements */}
+      <AchievementsList />
 
       {/* AI Cost Tracker */}
       {aiCost > 0 && (

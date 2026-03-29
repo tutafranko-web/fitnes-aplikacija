@@ -7,6 +7,7 @@ import Box from '@/components/ui/Box';
 import Bar from '@/components/ui/Bar';
 import Lbl from '@/components/ui/Lbl';
 import { logWorkout } from '@/lib/dataStore';
+import { usePassport, useCoinStore, useTamagotchi, COIN_REWARDS } from '@/lib/gamificationStore';
 import RunningMap from '@/components/running/RunningMap';
 import WeeklySchedule from './WeeklySchedule';
 
@@ -40,9 +41,17 @@ export default function TrainingTab() {
   const [suggestion, setSuggestion] = useState('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [unlockPopup, setUnlockPopup] = useState<string[]>([]);
+  const [coinsEarned, setCoinsEarned] = useState(0);
+  const passport = usePassport();
+  const coins = useCoinStore();
+  const tama = useTamagotchi();
 
   useEffect(() => {
     try { setProfile(JSON.parse(localStorage.getItem('fit-profile') || '{}')); } catch {}
+    passport.init();
+    coins.init();
+    tama.init();
   }, []);
 
   const sampleWorkouts: Workout[] = [
@@ -223,12 +232,38 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
             </button>
             <button
               onClick={() => {
-                // Log workout + auto-calculate soreness
                 if (activeWorkout) {
                   const doneExercises = activeWorkout.exercises.filter(e => e.done).map(e => e.name);
-                  if (doneExercises.length > 0) logWorkout(doneExercises);
+                  if (doneExercises.length > 0) {
+                    // 1. Log workout
+                    logWorkout(doneExercises);
+
+                    // 2. Passport — unlock muscle heads
+                    const allNewUnlocks: string[] = [];
+                    for (const ex of doneExercises) {
+                      const newHeads = passport.unlockFromExercise(ex);
+                      allNewUnlocks.push(...newHeads);
+                    }
+                    if (allNewUnlocks.length > 0) {
+                      setUnlockPopup(allNewUnlocks);
+                      setTimeout(() => setUnlockPopup([]), 5000);
+                    }
+
+                    // 3. FIT Coins — earn for workout + unlocks
+                    let earned = COIN_REWARDS.WORKOUT_COMPLETE;
+                    earned += allNewUnlocks.length * COIN_REWARDS.MUSCLE_UNLOCK;
+                    coins.earn(earned, hr ? 'Trening završen' : 'Workout completed');
+                    coins.updateStreak();
+                    setCoinsEarned(earned);
+                    setTimeout(() => setCoinsEarned(0), 4000);
+
+                    // 4. Tamagotchi — feed trained muscles
+                    tama.recordTraining(activeWorkout.muscles.map(m =>
+                      m.toLowerCase().replace(/\s/g, '')
+                    ));
+                    tama.addXP(10);
+                  }
                 }
-                // Show suggestion for next workout
                 setSuggestion(hr ? '💡 Odličan trening! Sutra preporučujem Pull dan (leđa + biceps) za balansiran program.' : "💡 Great workout! Tomorrow I recommend a Pull day (back + biceps) for a balanced program.");
                 setActiveWorkout(null); setTimerRunning(false); setTimer(0);
               }}
@@ -313,7 +348,28 @@ ODGOVORI ISKLJUČIVO U OVOM JSON FORMATU:
 
   return (
     <div className="flex flex-col gap-3.5">
-      {/* AI Generate */}
+      {/* Unlock Popup */}
+      {unlockPopup.length > 0 && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className="px-5 py-3 rounded-2xl text-center" style={{ background: 'linear-gradient(135deg, #00f0b5, #7c5cfc)', boxShadow: '0 4px 30px rgba(0,240,181,.4)' }}>
+            <div className="text-lg font-black text-white">🎉 {unlockPopup.length} {hr ? 'novih mišića!' : 'new muscles!'}</div>
+            <div className="text-[10px] text-white/80 font-semibold">{hr ? 'Mišićna putovnica ažurirana' : 'Muscle Passport updated'}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Coins Earned Popup */}
+      {coinsEarned > 0 && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+          <div className="px-4 py-2 rounded-xl" style={{ background: '#ffd70020', border: '1px solid #ffd70040', backdropFilter: 'blur(10px)' }}>
+            <span className="text-sm font-black text-[#ffd700]">+{coinsEarned} FIT Coins 🪙</span>
+            {coins.getMultiplier() > 1 && (
+              <span className="text-[10px] text-[#ff6b4a] font-bold ml-2">🔥 {coins.getMultiplier()}x streak!</span>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Weekly Schedule Planner */}
       <WeeklySchedule />
 

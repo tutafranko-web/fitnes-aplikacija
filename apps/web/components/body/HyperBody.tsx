@@ -5,6 +5,7 @@ import { useT } from '@/hooks/useLocale';
 
 interface Props {
   soreness: Record<string, number>;
+  vitality?: Record<string, number>; // 0-100, from Tamagotchi
   onMuscleClick: (group: string) => void;
   selected: string | null;
   zoom: number;
@@ -47,7 +48,7 @@ const INF_STYLES: Record<number, React.CSSProperties> = {
   4: { filter: 'saturate(1.4) hue-rotate(-20deg) brightness(1.15)' },
 };
 
-export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isFront }: Props) {
+export default function HyperBody({ soreness, vitality, onMuscleClick, selected, zoom, isFront }: Props) {
   const [tooltip, setTooltip] = useState<TooltipInfo | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -80,6 +81,15 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
     onMuscleClick(getGroup(m));
   }, [onMuscleClick]);
 
+  // Get vitality-based opacity for tamagotchi effect
+  const getVitalityOpacity = (muscleId: string): number => {
+    if (!vitality) return 1;
+    const group = getGroup(muscleId);
+    const v = vitality[group];
+    if (v === undefined) return 0.35; // never trained = dim
+    return Math.max(0.15, v / 100);
+  };
+
   // Build className + style for each muscle path
   const mp = (muscleId: string, extraClass?: string) => {
     const group = getGroup(muscleId);
@@ -88,6 +98,10 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
     let cls = 'mh';
     if (lv > 0) cls += ` i${lv}`;
     if (isSel) cls += ' sel';
+    if (vitality) {
+      const v = vitality[group];
+      if (v !== undefined && v >= 90) cls += ' glow'; // trained today
+    }
     if (extraClass) cls += ` ${extraClass}`;
     return cls;
   };
@@ -122,6 +136,8 @@ export default function HyperBody({ soreness, onMuscleClick, selected, zoom, isF
         .mh.i3{filter:saturate(1.1) hue-rotate(-8deg) brightness(1.1)!important}
         .mh.i4{filter:saturate(1.4) hue-rotate(-20deg) brightness(1.15)!important}
         .mh.sel:hover{filter:brightness(1.3)!important;stroke:rgba(255,255,255,.7);stroke-width:2}
+        .mh.glow{animation:muscleGlow 2s ease-in-out infinite}
+        @keyframes muscleGlow{0%,100%{filter:brightness(1.1) drop-shadow(0 0 3px rgba(10,255,190,.3))}50%{filter:brightness(1.25) drop-shadow(0 0 8px rgba(10,255,190,.5))}}
       `}</style>
 
       {isFront ? (

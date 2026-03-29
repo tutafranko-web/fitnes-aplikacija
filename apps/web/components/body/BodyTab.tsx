@@ -250,7 +250,16 @@ export default function BodyTab() {
             </button>
           </div>
         </div>
-        <HyperBody soreness={soreness} onMuscleClick={cycleS} selected={selected} zoom={zoom} isFront={side === 'front'} />
+        <HyperBody
+          soreness={soreness}
+          vitality={Object.fromEntries(
+            Object.keys(soreness).map(k => [k, tama.getVitality(k)])
+          )}
+          onMuscleClick={cycleS}
+          selected={selected}
+          zoom={zoom}
+          isFront={side === 'front'}
+        />
       </Box>
 
       {/* Inflammation Legend */}
