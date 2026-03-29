@@ -1,6 +1,6 @@
 'use client';
 
-import { useT } from '@/hooks/useLocale';
+import { useT, useLocaleStore } from '@/hooks/useLocale';
 
 const tabs = [
   { id: 'home', icon: '⚡' },
@@ -9,6 +9,7 @@ const tabs = [
   { id: 'training', icon: '🏋️' },
   { id: 'body', icon: '🫀' },
   { id: 'social', icon: '👥' },
+  { id: 'map', icon: '🗺️' },
   { id: 'settings', icon: '⚙️' },
 ] as const;
 
@@ -19,6 +20,7 @@ const tabColorMap: Record<string, string> = {
   training: '#ff6b4a',
   body: '#7c5cfc',
   social: '#ff4d8d',
+  map: '#22c55e',
   settings: '#8b8fa3',
 };
 
@@ -29,6 +31,7 @@ interface Props {
 
 export default function BottomTabBar({ activeTab, onTabChange }: Props) {
   const t = useT();
+  const locale = useLocaleStore(s => s.locale);
   const tabLabels: Record<string, string> = {
     home: t.tabs.home,
     trainer: t.tabs.trainer,
@@ -36,6 +39,7 @@ export default function BottomTabBar({ activeTab, onTabChange }: Props) {
     training: t.tabs.training,
     body: t.tabs.body,
     social: t.tabs.social,
+    map: locale === 'hr' ? 'Mapa' : 'Map',
     settings: t.common.settings,
   };
 

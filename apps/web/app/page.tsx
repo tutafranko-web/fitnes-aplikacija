@@ -9,6 +9,7 @@ import BodyTab from '@/components/body/BodyTab';
 import NutritionTab from '@/components/nutrition/NutritionTab';
 import TrainingTab from '@/components/training/TrainingTab';
 import SocialTab from '@/components/social/SocialTab';
+import StreetWorkoutMap from '@/components/map/StreetWorkoutMap';
 import SettingsTab from '@/components/settings/SettingsTab';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { requestPermission, registerServiceWorker, startReminders } from '@/lib/notifications';
@@ -20,6 +21,7 @@ const tabColors: Record<string, string> = {
   nutrition: '#ffc233',
   training: '#ff6b4a',
   social: '#ff4d8d',
+  map: '#22c55e',
   settings: '#8b8fa3',
 };
 
@@ -110,6 +112,7 @@ export default function App() {
         <div style={{ display: tab === 'nutrition' ? 'block' : 'none' }}><NutritionTab /></div>
         <div style={{ display: tab === 'training' ? 'block' : 'none' }}><TrainingTab /></div>
         <div style={{ display: tab === 'social' ? 'block' : 'none' }}><SocialTab /></div>
+        <div style={{ display: tab === 'map' ? 'block' : 'none' }}><StreetWorkoutMap /></div>
         <div style={{ display: tab === 'settings' ? 'block' : 'none' }}><SettingsTab onResetOnboarding={resetOnboarding} /></div>
       </div>
 
